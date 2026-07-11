@@ -1,0 +1,319 @@
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using System.Text;
+using DotNetEnv;
+
+using WiseMonitor.Api.Authorization;
+using WiseMonitor.Api.Config;
+using WiseMonitor.Api.Data;
+using WiseMonitor.Api.Models.Enums;
+using WiseMonitor.Api.Repositories;
+using WiseMonitor.Api.Services;
+using WiseMonitor.Api.Middlewares;
+using WiseMonitor.Api.Helpers;
+using WiseMonitor.Api.Extensions;
+using Microsoft.AspNetCore.Mvc;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// =======================
+// LOAD .ENV
+// =======================
+Env.Load();
+
+// =======================
+// JWT
+// =======================
+var jwtSecret = Environment.GetEnvironmentVariable("JWT_SECRET");
+
+if (string.IsNullOrWhiteSpace(jwtSecret))
+    throw new Exception("JWT_SECRET não configurado em produção!");
+
+var jwtSettings = new JwtSettings
+{
+    SecretKey          = jwtSecret,
+    Issuer             = Environment.GetEnvironmentVariable("JWT_ISSUER"),
+    Audience           = Environment.GetEnvironmentVariable("JWT_AUDIENCE"),
+    ExpirationMinutes  = int.Parse(Environment.GetEnvironmentVariable("JWT_EXPIRATION_MINUTES") ?? "60")
+};
+
+builder.Services.AddSingleton(jwtSettings);
+builder.Services.AddHttpClient();
+
+var key = Encoding.UTF8.GetBytes(jwtSettings.SecretKey);
+
+// =======================
+// DATABASE
+// =======================
+var dbHost = Environment.GetEnvironmentVariable("DB_HOST");
+var dbPort = Environment.GetEnvironmentVariable("DB_PORT") ?? "5432";
+var dbName = Environment.GetEnvironmentVariable("DB_NAME");
+var dbUser = Environment.GetEnvironmentVariable("DB_USER");
+var dbPass = Environment.GetEnvironmentVariable("DB_PASSWORD");
+
+if (string.IsNullOrWhiteSpace(dbHost))
+    throw new Exception("DB_HOST não configurado!");
+
+var connectionString =
+    $"Host={dbHost};Port={dbPort};Database={dbName};Username={dbUser};Password={dbPass};Search Path=public;Pooling=true;Timeout=15;CommandTimeout=30";
+
+Console.WriteLine($"[DB] Conectando → {dbHost}:{dbPort}");
+
+builder.Services.AddDbContext<AppDbContext>(options =>
+{
+    options.UseNpgsql(connectionString);
+});
+
+// =======================
+// SERVICES
+// =======================
+builder.Services.AddSingleton<LiveMonitoringService>();
+builder.Services.AddSingleton<ILiveMonitoringService>(sp => sp.GetRequiredService<LiveMonitoringService>());
+
+builder.Services.AddScoped<IAuthService,                AuthService>();
+builder.Services.AddScoped<IEmailService,               EmailService>();
+builder.Services.AddScoped<IJwtService,                 JwtService>();
+builder.Services.AddScoped<IUserService,                UserService>();
+builder.Services.AddScoped<IOrganizationService,        OrganizationService>();
+builder.Services.AddScoped<IDeviceService,              DeviceService>();
+builder.Services.AddScoped<IScreenshotService,          ScreenshotService>();
+builder.Services.AddScoped<IAppFocusService,            AppFocusService>();
+builder.Services.AddScoped<IActivityClassificationService, ActivityClassificationService>();
+builder.Services.AddScoped<IWorkScheduleService,        WorkScheduleService>();
+builder.Services.AddScoped<ITeamService,                TeamService>();
+builder.Services.AddScoped<IKeyboardService,            KeyboardService>();
+builder.Services.AddScoped<ILiveSessionService,         LiveSessionService>();
+
+// Novos serviços
+builder.Services.AddScoped<IDepartmentService,  DepartmentService>();
+builder.Services.AddScoped<IAuditService,       AuditService>();
+builder.Services.AddScoped<IDelegationService,  DelegationService>();
+
+// SuperAdmin
+builder.Services.AddScoped<ISuperAdminTenantService,      SuperAdminTenantService>();
+builder.Services.AddScoped<ISuperAdminUserService,        SuperAdminUserService>();
+builder.Services.AddScoped<ISuperAdminMetricsService,     SuperAdminMetricsService>();
+builder.Services.AddScoped<ISuperAdminAlertService,       SuperAdminAlertService>();
+builder.Services.AddScoped<ISuperAdminAgentService,       SuperAdminAgentService>();
+builder.Services.AddScoped<ISuperAdminIntegrationService, SuperAdminIntegrationService>();
+builder.Services.AddScoped<ISuperAdminSettingsService,    SuperAdminSettingsService>();
+builder.Services.AddScoped<SuperAdminAuthorizationFilter>();
+
+// Agent module
+builder.Services.AddAgentModule(builder.Configuration);
+
+// =======================
+// REPOSITORIES
+// =======================
+builder.Services.AddScoped<IUserRepository,         UserRepository>();
+builder.Services.AddScoped<IOrganizationRepository, OrganizationRepository>();
+builder.Services.AddScoped<IDeviceRepository,       DeviceRepository>();
+builder.Services.AddScoped<IScreenshotRepository,   ScreenshotRepository>();
+builder.Services.AddScoped<IWorkScheduleRepository, WorkScheduleRepository>();
+builder.Services.AddScoped<IAppFocusRepository,     AppFocusRepository>();
+builder.Services.AddScoped<ITeamRepository,         TeamRepository>();
+builder.Services.AddScoped<IKeyboardRepository,     KeyboardRepository>();
+
+// =======================
+// WebRTC
+// =======================
+builder.Services.AddSingleton<LiveStreamHub>();
+
+// =======================
+// Helpers / Infra
+// =======================
+builder.Services.AddSingleton<JwtHelper>();
+builder.Services.AddHttpContextAccessor();
+
+// =======================
+// Controllers
+// =======================
+builder.Services.AddControllers();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
+// =======================
+// CORS
+// =======================
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll", policy =>
+        policy.AllowAnyOrigin()
+              .AllowAnyHeader()
+              .AllowAnyMethod());
+});
+
+// =======================
+// AUTHENTICATION (JWT)
+// =======================
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+.AddJwtBearer(options =>
+{
+    options.RequireHttpsMetadata = false;
+    options.SaveToken = true;
+
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuerSigningKey = true,
+        IssuerSigningKey         = new SymmetricSecurityKey(key),
+        ValidateIssuer           = false,
+        ValidateAudience         = false,
+        ClockSkew                = TimeSpan.Zero
+    };
+
+    // Suporte a JWT via query string (WebSocket)
+    options.Events = new JwtBearerEvents
+    {
+        OnMessageReceived = ctx =>
+        {
+            var token = ctx.Request.Query["token"].FirstOrDefault();
+            if (!string.IsNullOrWhiteSpace(token))
+                ctx.Token = token;
+            return Task.CompletedTask;
+        }
+    };
+});
+
+// =======================
+// AUTHORIZATION (RBAC + Permission Policies)
+// =======================
+builder.Services.AddScoped<IAuthorizationHandler, PermissionAuthorizationHandler>();
+
+builder.Services.AddAuthorization(options =>
+{
+    // SuperAdmin da plataforma
+    options.AddPolicy("SuperAdminOnly", policy =>
+        policy.RequireRole(UserRoles.SuperAdmin));
+
+    // Cria uma política "Permission:<perm>" para cada permissão conhecida
+    string[] allPermissions =
+    [
+        Permissions.UsersCreate,       Permissions.UsersEdit,       Permissions.UsersDelete,   Permissions.UsersView,
+        Permissions.DepartmentsCreate, Permissions.DepartmentsEdit, Permissions.DepartmentsDelete,
+        Permissions.TeamsCreate,       Permissions.TeamsEdit,       Permissions.TeamsDelete,
+        Permissions.ProjectsCreate,    Permissions.ProjectsEdit,    Permissions.ProjectsDelete,
+        Permissions.ReportsView,       Permissions.ReportsExport,
+        Permissions.ScreenshotsView,   Permissions.ScreenshotsDelete,
+        Permissions.ActivityView,      Permissions.ActivityExport,
+        Permissions.LivestreamView,    Permissions.LivestreamStart,  Permissions.LivestreamStop,
+        Permissions.SystemMetricsView,
+        Permissions.BillingView,       Permissions.BillingManage,
+        Permissions.AuditLogsView,
+        Permissions.RolesManage,       Permissions.PermissionsManage,
+        Permissions.DelegationsCreate, Permissions.DelegationsView,
+        Permissions.TenantsView,       Permissions.TenantsCreate,    Permissions.TenantsEdit,
+        Permissions.TenantsDelete,     Permissions.TenantsSuspend,   Permissions.MetricsGlobal,
+    ];
+
+    foreach (var perm in allPermissions)
+    {
+        var captured = perm;
+        options.AddPolicy($"Permission:{captured}", policy =>
+            policy.Requirements.Add(new PermissionRequirement(captured)));
+    }
+});
+
+var app = builder.Build();
+
+// =======================
+// PORT CLOUD RUN
+// =======================
+var port = Environment.GetEnvironmentVariable("APP_PORT") ?? "8080";
+app.Urls.Add($"http://0.0.0.0:{port}");
+Console.WriteLine($"API rodando na porta {port}");
+
+// =======================
+// Swagger
+// =======================
+app.UseSwagger();
+app.UseSwaggerUI();
+
+// =======================
+// MIDDLEWARES
+// =======================
+app.UseRouting();
+app.UseCors("AllowAll");
+app.UseWebSockets();
+app.UseAuthentication();
+app.UseAuthorization();
+
+app.UseMiddleware<AuditMiddleware>();
+app.UseMiddleware<DeviceWebSocketMiddleware>();
+app.UseMiddleware<MonitorWebSocketMiddleware>();
+app.UseMiddleware<TenantMiddleware>();
+
+app.UseStaticFiles();
+app.MapControllers().RequireCors("AllowAll");
+
+// =======================
+// MIGRATION SEGURA
+// =======================
+using (var scope = app.Services.CreateScope())
+{
+    try
+    {
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Console.WriteLine("[DB] Aplicando migrations...");
+
+        if (db.Database.CanConnect())
+        {
+            db.Database.Migrate();
+            Console.WriteLine("[DB] Banco atualizado com sucesso");
+        }
+        else
+        {
+            Console.WriteLine("[DB] Não conseguiu conectar no banco");
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[DB] ERRO: {ex}");
+    }
+}
+
+// =======================
+// SEED SUPER ADMIN
+// =======================
+using (var scope = app.Services.CreateScope())
+{
+    try
+    {
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var superAdminEmail = Environment.GetEnvironmentVariable("SUPERADMIN_EMAIL") ?? "superadmin@wisemonitor.com";
+        var superAdminPassword = Environment.GetEnvironmentVariable("SUPERADMIN_PASSWORD") ?? "SuperAdmin@2025!";
+
+        if (!db.Users.Any(u => u.IsSuperAdmin))
+        {
+            db.Users.Add(new WiseMonitor.Api.Models.User
+            {
+                FirstName    = "Super",
+                LastName     = "Admin",
+                Email        = superAdminEmail,
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(superAdminPassword),
+                Role         = WiseMonitor.Api.Models.Enums.UserRoles.SuperAdmin,
+                IsSuperAdmin = true,
+                IsActive     = true,
+                OrganizationId = null,
+            });
+
+            db.SaveChanges();
+            Console.WriteLine($"[SEED] SuperAdmin criado → {superAdminEmail}");
+            Console.WriteLine($"[SEED] Senha padrão: {superAdminPassword}");
+            Console.WriteLine("[SEED] ⚠️  Troque a senha após o primeiro login!");
+        }
+        else
+        {
+            Console.WriteLine("[SEED] SuperAdmin já existe — nenhuma ação necessária.");
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[SEED] ERRO ao criar SuperAdmin: {ex.Message}");
+    }
+}
+
+app.Run();
+

@@ -1,0 +1,6 @@
+@WiseMonitor.Api_HostAddress = http://localhost:5198
+
+GET {{WiseMonitor.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

@@ -1,0 +1,23 @@
+# Pastas de build do .NET
+bin/
+obj/
+*.dll
+*.exe
+*.pdb
+*.cache
+*.suo
+*.user
+*.vs
+*.vscode
+
+# Secrets e variáveis de ambiente
+.env
+.env.*
+!.env.example
+
+# Exceção: instalador no wwwroot para download
+!wwwroot/downloads/**
+
+# Uploads de usuário (dados reais de runtime — nunca versionar)
+wwwroot/uploads/**
+!wwwroot/uploads/.gitkeep

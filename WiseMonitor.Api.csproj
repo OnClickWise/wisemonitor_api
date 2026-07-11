@@ -1,0 +1,102 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+
+    <Nullable>enable</Nullable>
+
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <!-- PRODUÇÃO -->
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+
+    <InvariantGlobalization>true</InvariantGlobalization>
+
+    <TieredPGO>true</TieredPGO>
+
+    <TieredCompilation>true</TieredCompilation>
+
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+
+    <AssemblyName>WiseMonitor.Api</AssemblyName>
+
+    <RootNamespace>WiseMonitor.Api</RootNamespace>
+
+    <!-- VERSIONAMENTO -->
+    <Version>1.0.0</Version>
+
+    <AssemblyVersion>1.0.0</AssemblyVersion>
+
+    <FileVersion>1.0.0</FileVersion>
+
+  </PropertyGroup>
+
+  <!-- ===================================================== -->
+  <!-- PACKAGES -->
+  <!-- ===================================================== -->
+
+  <ItemGroup>
+
+    <!-- AUTH -->
+    <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
+
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.7" />
+
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.13.0" />
+
+    <!-- DATABASE -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.7" />
+
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.7">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.7" />
+
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.4" />
+
+    <!-- EMAIL -->
+    <PackageReference Include="MailKit" Version="4.13.0" />
+
+    <PackageReference Include="MimeKit" Version="4.13.0" />
+
+    <!-- ENV -->
+    <PackageReference Include="DotNetEnv" Version="3.1.1" />
+
+    <!-- IMAGES -->
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.11" />
+
+    <PackageReference Include="SixLabors.ImageSharp.Drawing" Version="2.1.7" />
+
+    <!-- SWAGGER -->
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.4.0" />
+
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.6" />
+
+  </ItemGroup>
+
+  <!-- ===================================================== -->
+  <!-- EXCLUDE TEST PROJECT                                  -->
+  <!-- ===================================================== -->
+
+  <ItemGroup>
+    <Compile Remove="WiseMonitor.Api.Tests/**" />
+    <Content Remove="WiseMonitor.Api.Tests/**" />
+    <EmbeddedResource Remove="WiseMonitor.Api.Tests/**" />
+    <None Remove="WiseMonitor.Api.Tests/**" />
+  </ItemGroup>
+
+  <!-- ===================================================== -->
+  <!-- STATIC FILES -->
+  <!-- ===================================================== -->
+
+  <ItemGroup>
+
+    <None Update="html\PasswordReset.html">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+
+  </ItemGroup>
+
+</Project>
