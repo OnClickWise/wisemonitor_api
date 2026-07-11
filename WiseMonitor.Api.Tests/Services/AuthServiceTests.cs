@@ -1,12 +1,37 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using System.Security.Claims;
 using WiseMonitor.Api.Data;
 using WiseMonitor.Api.DTOs;
+using WiseMonitor.Api.Helpers;
 using WiseMonitor.Api.Models;
 using WiseMonitor.Api.Services;
 using Xunit;
 
 namespace WiseMonitor.Api.Tests.Services;
+
+file class FakeJwtService : IJwtService
+{
+    public string GenerateToken(User user) => "fake-token";
+    public string GenerateToken(User user, Guid orgId) => "fake-token";
+    public ClaimsPrincipal? ValidateToken(string token) => null;
+    public Guid? GetUserIdFromToken(string token) => null;
+}
+
+file class FakeLiveSessionService : ILiveSessionService
+{
+    public Task<string> GetOrCreateSessionForOrganizationAsync(Guid organizationId) => Task.FromResult("fake-session");
+    public Task<string> GetOrCreateSessionForUserAsync(Guid organizationId, Guid userId) => Task.FromResult("fake-session");
+    public Task EndSessionForOrganizationAsync(Guid organizationId) => Task.CompletedTask;
+    public Task EndSessionForUserAsync(Guid organizationId, Guid userId) => Task.CompletedTask;
+    public bool HasActiveSession(Guid organizationId) => false;
+    public bool HasActiveSession(Guid organizationId, Guid userId) => false;
+}
+
+file class FakeEmailService : IEmailService
+{
+    public Task SendEmailAsync(string to, string subject, string htmlMessage) => Task.CompletedTask;
+}
 
 public class AuthServiceTests
 {
@@ -29,7 +54,7 @@ public class AuthServiceTests
             .Build();
 
     private static AuthService CreateService(AppDbContext db) =>
-        new AuthService(db, CreateConfig());
+        new AuthService(db, CreateConfig(), new FakeJwtService(), new FakeLiveSessionService(), new FakeEmailService());
 
     // ─── HashPassword ──────────────────────────────────────────
 
@@ -190,5 +215,65 @@ public class AuthServiceTests
         var svc = CreateService(CreateDb());
         await Assert.ThrowsAsync<ArgumentNullException>(() =>
             svc.LoginAsync(null!));
+    }
+
+    // ─── LoginByEmailAsync (caminho real usado pelo AuthController) ────
+
+    [Fact]
+    public async Task LoginByEmailAsync_ValidCredentials_ReturnsTokenAndUserData()
+    {
+        var db = CreateDb();
+        var svc = CreateService(db);
+
+        var orgId = Guid.NewGuid();
+        db.Organizations.Add(new Organization { Id = orgId, Name = "TestOrg" });
+        db.Users.Add(new User
+        {
+            Id = Guid.NewGuid(),
+            Email = "maria@empresa.com",
+            PasswordHash = svc.HashPassword("Senha@123"),
+            Role = "admin",
+            IsActive = true,
+            OrganizationId = orgId,
+            FirstName = "Maria",
+            LastName = "Souza"
+        });
+        await db.SaveChangesAsync();
+
+        var result = await svc.LoginByEmailAsync("maria@empresa.com", "Senha@123");
+
+        Assert.NotNull(result.Token);
+        Assert.NotEmpty(result.SessionId);
+        Assert.Equal(orgId, result.OrganizationId);
+        Assert.Equal("maria@empresa.com", result.User.Email);
+    }
+
+    [Fact]
+    public async Task LoginByEmailAsync_WrongPassword_ThrowsUnauthorized()
+    {
+        var db = CreateDb();
+        var svc = CreateService(db);
+
+        db.Users.Add(new User
+        {
+            Email = "maria@empresa.com",
+            PasswordHash = svc.HashPassword("Senha@123"),
+            IsActive = true,
+            FirstName = "M",
+            LastName = "S"
+        });
+        await db.SaveChangesAsync();
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            svc.LoginByEmailAsync("maria@empresa.com", "SenhaErrada"));
+    }
+
+    [Fact]
+    public async Task LoginByEmailAsync_UserNotFound_ThrowsUnauthorized()
+    {
+        var svc = CreateService(CreateDb());
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            svc.LoginByEmailAsync("naoexiste@empresa.com", "Senha@123"));
     }
 }

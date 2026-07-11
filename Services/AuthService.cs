@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IdentityModel.Tokens.Jwt;
+using System.IO;
 using System.Security.Claims;
 using System.Text;
 using System.Threading.Tasks;
@@ -9,6 +10,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 using WiseMonitor.Api.Data;
 using WiseMonitor.Api.DTOs;
+using WiseMonitor.Api.Helpers;
 using WiseMonitor.Api.Models;
 
 namespace WiseMonitor.Api.Services
@@ -17,11 +19,22 @@ namespace WiseMonitor.Api.Services
     {
         private readonly AppDbContext _context;
         private readonly IConfiguration _configuration;
+        private readonly IJwtService _jwtService;
+        private readonly ILiveSessionService _liveSessionService;
+        private readonly IEmailService _emailService;
 
-        public AuthService(AppDbContext context, IConfiguration configuration)
+        public AuthService(
+            AppDbContext context,
+            IConfiguration configuration,
+            IJwtService jwtService,
+            ILiveSessionService liveSessionService,
+            IEmailService emailService)
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
             _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+            _jwtService = jwtService ?? throw new ArgumentNullException(nameof(jwtService));
+            _liveSessionService = liveSessionService ?? throw new ArgumentNullException(nameof(liveSessionService));
+            _emailService = emailService ?? throw new ArgumentNullException(nameof(emailService));
         }
 
         public async Task<LoginResponseDTO> LoginAsync(LoginRequestDTO loginDto)
@@ -101,6 +114,111 @@ namespace WiseMonitor.Api.Services
             );
 
             return new JwtSecurityTokenHandler().WriteToken(token);
+        }
+
+        public async Task<AuthLoginResultDTO> LoginByEmailAsync(string email, string password)
+        {
+            if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
+                throw new ArgumentException("Email e senha são obrigatórios.");
+
+            var user = await _context.Users
+                .Include(u => u.Organization)
+                .FirstOrDefaultAsync(u => u.Email == email);
+
+            if (user == null || !VerifyPassword(password, user.PasswordHash))
+                throw new UnauthorizedAccessException("Credenciais inválidas.");
+
+            var sessionId = user.OrganizationId.HasValue
+                ? await _liveSessionService.GetOrCreateSessionForOrganizationAsync(user.OrganizationId.Value)
+                : Guid.NewGuid().ToString();
+
+            var token = _jwtService.GenerateToken(user);
+
+            return new AuthLoginResultDTO
+            {
+                Token = token,
+                ExpiresIn = 3600,
+                SessionId = sessionId,
+                OrganizationId = user.OrganizationId,
+                User = new AuthLoginUserDTO
+                {
+                    Id = user.Id,
+                    FirstName = user.FirstName,
+                    LastName = user.LastName,
+                    Email = user.Email,
+                    Role = user.Role
+                }
+            };
+        }
+
+        public async Task RequestPasswordResetAsync(string email)
+        {
+            if (string.IsNullOrWhiteSpace(email))
+                throw new ArgumentException("E-mail é obrigatório.");
+
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == email);
+            if (user == null)
+                return; // não revela se o e-mail existe
+
+            var token = Guid.NewGuid().ToString("N");
+            _context.PasswordResetTokens.Add(new PasswordResetToken
+            {
+                UserId = user.Id,
+                Token = token,
+                Expiration = DateTime.UtcNow.AddHours(1)
+            });
+            await _context.SaveChangesAsync();
+
+            var frontendUrl = Environment.GetEnvironmentVariable("FRONTEND_URL") ?? "https://wisemonitor.vercel.app";
+            var resetLink = $"{frontendUrl}/reset-password?token={token}";
+
+            try
+            {
+                var templatePath = Path.Combine(AppContext.BaseDirectory, "html", "PasswordReset.html");
+                var htmlBody = await File.ReadAllTextAsync(templatePath);
+
+                htmlBody = htmlBody.Replace("{{UserName}}", user.FirstName ?? "Usuário");
+                htmlBody = htmlBody.Replace("{{ResetLink}}", resetLink);
+
+                await _emailService.SendEmailAsync(user.Email!, "Redefinição de Senha - WiseMonitor", htmlBody);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[AuthService] Falha ao enviar e-mail de redefinição: {ex.Message}");
+            }
+        }
+
+        public async Task ResetPasswordAsync(string token, string newPassword)
+        {
+            if (string.IsNullOrWhiteSpace(token) || string.IsNullOrWhiteSpace(newPassword))
+                throw new ArgumentException("Token e nova senha são obrigatórios.");
+
+            var resetToken = await _context.PasswordResetTokens
+                .FirstOrDefaultAsync(t => t.Token == token && !t.Used);
+
+            if (resetToken == null || resetToken.Expiration < DateTime.UtcNow)
+                throw new InvalidOperationException("Token inválido ou expirado.");
+
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == resetToken.UserId)
+                ?? throw new InvalidOperationException("Usuário não encontrado.");
+
+            user.PasswordHash = HashPassword(newPassword);
+            resetToken.Used = true;
+
+            await _context.SaveChangesAsync();
+        }
+
+        public async Task LogoutAsync(string bearerToken)
+        {
+            var userId = _jwtService.GetUserIdFromToken(bearerToken);
+            if (userId == null)
+                throw new UnauthorizedAccessException("Token inválido ou expirado.");
+
+            var user = await _context.Users.FindAsync(userId.Value)
+                ?? throw new UnauthorizedAccessException("Usuário não encontrado.");
+
+            if (user.OrganizationId.HasValue)
+                await _liveSessionService.EndSessionForOrganizationAsync(user.OrganizationId.Value);
         }
     }
 }

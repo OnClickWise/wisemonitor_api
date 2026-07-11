@@ -45,6 +45,13 @@ builder.Services.AddHttpClient();
 var key = Encoding.UTF8.GetBytes(jwtSettings.SecretKey);
 
 // =======================
+// SMTP (senha via env var, nunca em appsettings.json)
+// =======================
+var smtpPass = Environment.GetEnvironmentVariable("SMTP_PASS");
+if (!string.IsNullOrWhiteSpace(smtpPass))
+    builder.Configuration["Smtp:Pass"] = smtpPass;
+
+// =======================
 // DATABASE
 // =======================
 var dbHost = Environment.GetEnvironmentVariable("DB_HOST");
@@ -126,6 +133,7 @@ builder.Services.AddSingleton<LiveStreamHub>();
 // =======================
 builder.Services.AddSingleton<JwtHelper>();
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ITenantContext, TenantContext>();
 
 // =======================
 // Controllers
@@ -137,12 +145,22 @@ builder.Services.AddSwaggerGen();
 // =======================
 // CORS
 // =======================
+// ALLOWED_ORIGINS: lista separada por vírgula (ex.: https://app.wisemonitor.com,https://admin.wisemonitor.com)
+// Em desenvolvimento, sem a env var, libera localhost para não travar o dia a dia.
+var allowedOriginsRaw = Environment.GetEnvironmentVariable("ALLOWED_ORIGINS");
+var allowedOrigins = string.IsNullOrWhiteSpace(allowedOriginsRaw)
+    ? (builder.Environment.IsDevelopment()
+        ? new[] { "http://localhost:3000", "http://localhost:5173" }
+        : Array.Empty<string>())
+    : allowedOriginsRaw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll", policy =>
-        policy.AllowAnyOrigin()
+    options.AddPolicy("Default", policy =>
+        policy.WithOrigins(allowedOrigins)
               .AllowAnyHeader()
-              .AllowAnyMethod());
+              .AllowAnyMethod()
+              .AllowCredentials());
 });
 
 // =======================
@@ -151,15 +169,17 @@ builder.Services.AddCors(options =>
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 .AddJwtBearer(options =>
 {
-    options.RequireHttpsMetadata = false;
+    options.RequireHttpsMetadata = !builder.Environment.IsDevelopment();
     options.SaveToken = true;
 
     options.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuerSigningKey = true,
         IssuerSigningKey         = new SymmetricSecurityKey(key),
-        ValidateIssuer           = false,
-        ValidateAudience         = false,
+        ValidateIssuer           = true,
+        ValidIssuer              = jwtSettings.Issuer,
+        ValidateAudience         = true,
+        ValidAudience            = jwtSettings.Audience,
         ClockSkew                = TimeSpan.Zero
     };
 
@@ -225,16 +245,19 @@ app.Urls.Add($"http://0.0.0.0:{port}");
 Console.WriteLine($"API rodando na porta {port}");
 
 // =======================
-// Swagger
+// Swagger (somente Development)
 // =======================
-app.UseSwagger();
-app.UseSwaggerUI();
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
 
 // =======================
 // MIDDLEWARES
 // =======================
 app.UseRouting();
-app.UseCors("AllowAll");
+app.UseCors("Default");
 app.UseWebSockets();
 app.UseAuthentication();
 app.UseAuthorization();
@@ -245,13 +268,21 @@ app.UseMiddleware<MonitorWebSocketMiddleware>();
 app.UseMiddleware<TenantMiddleware>();
 
 app.UseStaticFiles();
-app.MapControllers().RequireCors("AllowAll");
+app.MapControllers().RequireCors("Default");
 
 // =======================
 // MIGRATION SEGURA
 // =======================
-using (var scope = app.Services.CreateScope())
+// AUTO_MIGRATE: precisa ser "true" explicitamente para migrar no start (padrão seguro para produção).
+// Em Development, migra automaticamente por conveniência a menos que AUTO_MIGRATE=false.
+var autoMigrateRaw = Environment.GetEnvironmentVariable("AUTO_MIGRATE");
+var autoMigrate = autoMigrateRaw != null
+    ? string.Equals(autoMigrateRaw, "true", StringComparison.OrdinalIgnoreCase)
+    : app.Environment.IsDevelopment();
+
+if (autoMigrate)
 {
+    using var scope = app.Services.CreateScope();
     try
     {
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -271,6 +302,10 @@ using (var scope = app.Services.CreateScope())
     {
         Console.WriteLine($"[DB] ERRO: {ex}");
     }
+}
+else
+{
+    Console.WriteLine("[DB] AUTO_MIGRATE desativado — rode as migrations como um passo separado do deploy.");
 }
 
 // =======================
@@ -301,7 +336,7 @@ using (var scope = app.Services.CreateScope())
 
             db.SaveChanges();
             Console.WriteLine($"[SEED] SuperAdmin criado → {superAdminEmail}");
-            Console.WriteLine($"[SEED] Senha padrão: {superAdminPassword}");
+            Console.WriteLine("[SEED] Senha definida via SUPERADMIN_PASSWORD (ou padrão de fallback) — nunca logada aqui.");
             Console.WriteLine("[SEED] ⚠️  Troque a senha após o primeiro login!");
         }
         else

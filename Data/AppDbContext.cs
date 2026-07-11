@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using WiseMonitor.Api.Models;
+using WiseMonitor.Api.Services;
 using System;
 using System.Linq;
 using System.Threading;
@@ -9,6 +10,7 @@ namespace WiseMonitor.Api.Data
 {
     public class AppDbContext : DbContext
     {
+        private readonly ITenantContext _tenant;
         // ==============================
         // DbSets principais
         // ==============================
@@ -53,9 +55,10 @@ namespace WiseMonitor.Api.Data
         // ==============================
         // Construtor
         // ==============================
-        public AppDbContext(DbContextOptions<AppDbContext> options)
+        public AppDbContext(DbContextOptions<AppDbContext> options, ITenantContext? tenant = null)
             : base(options)
         {
+            _tenant = tenant ?? new NullTenantContext();
         }
 
         // ==============================
@@ -78,6 +81,38 @@ namespace WiseMonitor.Api.Data
             modelBuilder.Entity<DepartmentMember>().ToTable("DepartmentMembers");
             modelBuilder.Entity<Delegation>().ToTable("Delegations");
             modelBuilder.Entity<AuditLog>().ToTable("AuditLogs");
+
+            // ==============================
+            // Isolamento de tenant (global query filters)
+            // Sempre que _tenant.IsActive for false (testes, migrations) ou o usuário
+            // for SuperAdmin da plataforma, o filtro não restringe nada.
+            // ==============================
+            modelBuilder.Entity<User>().HasQueryFilter(e =>
+                !_tenant.IsActive || _tenant.IsSuperAdmin || e.OrganizationId == _tenant.OrganizationId);
+            modelBuilder.Entity<Device>().HasQueryFilter(e =>
+                !_tenant.IsActive || _tenant.IsSuperAdmin || e.OrganizationId == _tenant.OrganizationId);
+            modelBuilder.Entity<Screenshot>().HasQueryFilter(e =>
+                !_tenant.IsActive || _tenant.IsSuperAdmin || e.OrganizationId == _tenant.OrganizationId);
+            modelBuilder.Entity<LiveSession>().HasQueryFilter(e =>
+                !_tenant.IsActive || _tenant.IsSuperAdmin || e.OrganizationId == _tenant.OrganizationId);
+            modelBuilder.Entity<AppFocusEvent>().HasQueryFilter(e =>
+                !_tenant.IsActive || _tenant.IsSuperAdmin || e.OrganizationId == _tenant.OrganizationId);
+            modelBuilder.Entity<Team>().HasQueryFilter(e =>
+                !_tenant.IsActive || _tenant.IsSuperAdmin || e.OrganizationId == _tenant.OrganizationId);
+            modelBuilder.Entity<Department>().HasQueryFilter(e =>
+                !_tenant.IsActive || _tenant.IsSuperAdmin || e.OrganizationId == _tenant.OrganizationId);
+            modelBuilder.Entity<Delegation>().HasQueryFilter(e =>
+                !_tenant.IsActive || _tenant.IsSuperAdmin || e.OrganizationId == _tenant.OrganizationId);
+            modelBuilder.Entity<AuditLog>().HasQueryFilter(e =>
+                !_tenant.IsActive || _tenant.IsSuperAdmin || e.OrganizationId == _tenant.OrganizationId);
+            modelBuilder.Entity<WorkSchedule>().HasQueryFilter(e =>
+                !_tenant.IsActive || _tenant.IsSuperAdmin || e.OrganizationId == _tenant.OrganizationId);
+            modelBuilder.Entity<WorkScheduleRule>().HasQueryFilter(e =>
+                !_tenant.IsActive || _tenant.IsSuperAdmin || e.OrganizationId == _tenant.OrganizationId);
+            modelBuilder.Entity<UserWorkSchedule>().HasQueryFilter(e =>
+                !_tenant.IsActive || _tenant.IsSuperAdmin || e.OrganizationId == _tenant.OrganizationId);
+            modelBuilder.Entity<KeyboardSession>().HasQueryFilter(e =>
+                !_tenant.IsActive || _tenant.IsSuperAdmin || e.OrganizationId == _tenant.OrganizationId);
 
             // ==============================
             // Organization ↔ User
