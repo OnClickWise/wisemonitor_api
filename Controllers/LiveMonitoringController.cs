@@ -57,37 +57,6 @@ namespace WiseMonitor.Api.Controllers
             }
         }
 
-        // ✅ Frame de transmissão ao vivo (não persiste — apenas broadcast via /ws/monitor)
-        [HttpPost("frame")]
-        [RequestSizeLimit(1_500_000)] // ~1.5MB, frames JPEG comprimidos
-        public IActionResult UploadFrame([FromForm] LiveFrameUploadDTO dto)
-        {
-            if (dto == null || dto.Frame == null || dto.Frame.Length == 0)
-                return BadRequest(new { message = "Frame inválido" });
-
-            try
-            {
-                using var ms = new MemoryStream();
-                dto.Frame.CopyTo(ms);
-                var contentType = string.IsNullOrWhiteSpace(dto.Frame.ContentType) ? "image/jpeg" : dto.Frame.ContentType;
-                _liveService.UpdateDeviceScreen(dto.DeviceId, dto.OrganizationId.ToString(), ms.ToArray(), contentType);
-
-                return Ok(new { message = "Frame recebido" });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "[Live Frame] Erro ao processar frame");
-                return StatusCode(500, new { message = "Erro ao processar frame", error = ex.Message });
-            }
-        }
-
-        // 🔹 Indica se algum admin está assistindo esse device agora (usado pelo Desktop)
-        [HttpGet("devices/{deviceId}/watched")]
-        public IActionResult IsWatched(string deviceId)
-        {
-            return Ok(new { watched = _liveService.IsWatched(deviceId) });
-        }
-
         // 🔹 Atualização de dispositivo
         [HttpPost("update")]
         public IActionResult UpdateDevice([FromBody] LiveDeviceUpdateDTO dto)

@@ -78,31 +78,6 @@ namespace WiseMonitor.Api.Services
             _ = BroadcastFrameAsync(deviceId, message);
         }
 
-        public void UpdateDeviceScreen(string deviceId, string orgId, byte[] screenshotBytes, string contentType = "image/png")
-        {
-            _logger.LogDebug(
-                "[ScreenUpdate] Org={OrgId}, Device={DeviceId}, Bytes={Bytes}",
-                orgId, deviceId, screenshotBytes.Length);
-
-            var base64 = Convert.ToBase64String(screenshotBytes);
-
-            // Preserva identidade já conhecida do device (vinda de um screenshot/update anterior)
-            // em vez de sobrescrever com placeholders — frames ao vivo chegam a cada ~1s e não
-            // devem "apagar" username/department já resolvidos.
-            _liveDevices.TryGetValue(deviceId, out var existing);
-
-            UpdateDevice(
-                deviceId,
-                orgId,
-                username: existing?.Username ?? $"User-{deviceId}",
-                department: existing?.Department ?? "Default",
-                thumbnailUrl: $"data:{contentType};base64,{base64}",
-                fullScreenUrl: $"data:{contentType};base64,{base64}",
-                type: "screenshot",
-                payload: base64
-            );
-        }
-
         public void RegisterOrUpdateDevice(LiveDeviceUpdateDTO dto)
         {
             var orgId = dto.OrgId ?? "default";
@@ -179,9 +154,6 @@ namespace WiseMonitor.Api.Services
                 set.TryRemove(sessionId, out _);
         }
 
-        public bool IsWatched(string deviceId) =>
-            _watchers.TryGetValue(deviceId, out var set) && !set.IsEmpty;
-
         // ================================
         // READS
         // ================================
@@ -209,6 +181,43 @@ namespace WiseMonitor.Api.Services
         {
             _logger.LogDebug("[GetAllDevices]");
             return _liveDevices.Values.ToList();
+        }
+
+        // ================================
+        // VIDEO SEGMENTS — notifica dashboards conectados que um novo segmento
+        // ficou disponível para o device (reaproveita o mesmo canal /ws/monitor).
+        // ================================
+        public async Task NotifyNewSegmentAsync(string deviceId, string orgId, Guid segmentId, DateTime startedAt, DateTime endedAt)
+        {
+            if (!_adminSockets.TryGetValue(orgId, out var admins) || !admins.Any())
+                return;
+
+            var wrapper = new
+            {
+                eventType = "segment",
+                deviceId,
+                segmentId,
+                startedAt,
+                endedAt
+            };
+            var json = JsonSerializer.Serialize(wrapper, _jsonOptions);
+            var bytes = Encoding.UTF8.GetBytes(json);
+            var segment = new ArraySegment<byte>(bytes);
+
+            foreach (var (sessionId, ws) in admins.ToList())
+            {
+                if (ws.State != WebSocketState.Open)
+                    continue;
+
+                try
+                {
+                    await ws.SendAsync(segment, WebSocketMessageType.Text, true, CancellationToken.None);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "[NotifyNewSegment] Falha ao notificar sessão {SessionId}", sessionId);
+                }
+            }
         }
 
         // ================================

@@ -81,6 +81,13 @@ if (!string.IsNullOrWhiteSpace(smtpPass))
     builder.Configuration["Smtp:Pass"] = smtpPass;
 
 // =======================
+// VIDEO SEGMENTS
+// =======================
+var videoRetentionHours = Environment.GetEnvironmentVariable("VIDEO_SEGMENT_RETENTION_HOURS");
+if (!string.IsNullOrWhiteSpace(videoRetentionHours))
+    builder.Configuration["VideoSegmentRetentionHours"] = videoRetentionHours;
+
+// =======================
 // DATABASE
 // =======================
 var dbHost = Environment.GetEnvironmentVariable("DB_HOST");
@@ -149,6 +156,7 @@ builder.Services.AddScoped<IUserService,                UserService>();
 builder.Services.AddScoped<IOrganizationService,        OrganizationService>();
 builder.Services.AddScoped<IDeviceService,              DeviceService>();
 builder.Services.AddScoped<IScreenshotService,          ScreenshotService>();
+builder.Services.AddScoped<IVideoSegmentService,        VideoSegmentService>();
 builder.Services.AddScoped<IAppFocusService,            AppFocusService>();
 builder.Services.AddScoped<IActivityClassificationService, ActivityClassificationService>();
 builder.Services.AddScoped<IWorkScheduleService,        WorkScheduleService>();
@@ -181,6 +189,7 @@ builder.Services.AddScoped<IUserRepository,         UserRepository>();
 builder.Services.AddScoped<IOrganizationRepository, OrganizationRepository>();
 builder.Services.AddScoped<IDeviceRepository,       DeviceRepository>();
 builder.Services.AddScoped<IScreenshotRepository,   ScreenshotRepository>();
+builder.Services.AddScoped<IVideoSegmentRepository, VideoSegmentRepository>();
 builder.Services.AddScoped<IWorkScheduleRepository, WorkScheduleRepository>();
 builder.Services.AddScoped<IAppFocusRepository,     AppFocusRepository>();
 builder.Services.AddScoped<ITeamRepository,         TeamRepository>();

@@ -18,6 +18,7 @@ namespace WiseMonitor.Api.Data
         public DbSet<User> Users { get; set; } = null!;
         public DbSet<PasswordResetToken> PasswordResetTokens { get; set; } = null!;
         public DbSet<Screenshot> Screenshots { get; set; } = null!;
+        public DbSet<VideoSegment> VideoSegments { get; set; } = null!;
         public DbSet<Device> Devices { get; set; } = null!;
         public DbSet<LiveSession> LiveSessions { get; set; } = null!;
         public DbSet<AppFocusEvent> AppFocusEvents { get; set; } = null!;
@@ -92,6 +93,8 @@ namespace WiseMonitor.Api.Data
             modelBuilder.Entity<Device>().HasQueryFilter(e =>
                 !_tenant.IsActive || _tenant.IsSuperAdmin || e.OrganizationId == _tenant.OrganizationId);
             modelBuilder.Entity<Screenshot>().HasQueryFilter(e =>
+                !_tenant.IsActive || _tenant.IsSuperAdmin || e.OrganizationId == _tenant.OrganizationId);
+            modelBuilder.Entity<VideoSegment>().HasQueryFilter(e =>
                 !_tenant.IsActive || _tenant.IsSuperAdmin || e.OrganizationId == _tenant.OrganizationId);
             modelBuilder.Entity<LiveSession>().HasQueryFilter(e =>
                 !_tenant.IsActive || _tenant.IsSuperAdmin || e.OrganizationId == _tenant.OrganizationId);
@@ -217,6 +220,15 @@ namespace WiseMonitor.Api.Data
                 entity.HasIndex(a => new { a.OrganizationId, a.CreatedAt });
                 entity.HasIndex(a => a.Action);
                 entity.HasIndex(a => a.UserId);
+            });
+
+            // ==============================
+            // VideoSegment
+            // ==============================
+            modelBuilder.Entity<VideoSegment>(entity =>
+            {
+                entity.HasIndex(v => new { v.OrganizationId, v.DeviceId, v.StartedAt });
+                entity.HasIndex(v => new { v.OrganizationId, v.MonitoredUserId, v.StartedAt });
             });
 
             // ==============================
