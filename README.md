@@ -299,6 +299,14 @@ completo (desktop → backend → dashboard).
 
 ---
 
+## Documentação completa
+
+A lista de módulos acima é um resumo. A documentação funcional completa de
+cada módulo (modelo de dados, regras de negócio, endpoints detalhados,
+limitações conhecidas) está em [`docs/`](docs/README.md).
+
+---
+
 ## Roadmap
 
 * Relatórios avançados
