@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using WiseMonitor.Api.Helpers;
 using WiseMonitor.Api.Services;
 
@@ -20,13 +21,18 @@ namespace WiseMonitor.Api.Middlewares
     public class MonitorWebSocketMiddleware
     {
         private readonly RequestDelegate _next;
+        private readonly ILogger<MonitorWebSocketMiddleware> _logger;
 
         private static readonly JsonSerializerOptions _json = new()
         {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase
         };
 
-        public MonitorWebSocketMiddleware(RequestDelegate next) => _next = next;
+        public MonitorWebSocketMiddleware(RequestDelegate next, ILogger<MonitorWebSocketMiddleware> logger)
+        {
+            _next = next;
+            _logger = logger;
+        }
 
         public async Task InvokeAsync(HttpContext context)
         {
@@ -78,7 +84,7 @@ namespace WiseMonitor.Api.Middlewares
             var liveService = context.RequestServices.GetRequiredService<ILiveMonitoringService>();
 
             using var socket = await context.WebSockets.AcceptWebSocketAsync();
-            Console.WriteLine($"[Monitor WS] ✅ Admin conectado | Org={orgId} | Session={sessionId}");
+            _logger.LogInformation("[Monitor WS] Admin conectado | Org={OrgId} | Session={SessionId}", orgId, sessionId);
 
             liveService.RegisterAdmin(orgId, sessionId, socket);
 
@@ -121,7 +127,7 @@ namespace WiseMonitor.Api.Middlewares
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[Monitor WS] Erro: {ex.Message}");
+                _logger.LogError(ex, "[Monitor WS] Erro | Org={OrgId}", orgId);
             }
             finally
             {
@@ -129,7 +135,7 @@ namespace WiseMonitor.Api.Middlewares
                 liveService.RemoveWatcherFromAllDevices(sessionId);
                 if (socket.State == WebSocketState.Open)
                     await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Encerrado", CancellationToken.None);
-                Console.WriteLine($"[Monitor WS] 🔴 Admin desconectado | Org={orgId}");
+                _logger.LogInformation("[Monitor WS] Admin desconectado | Org={OrgId}", orgId);
             }
         }
 

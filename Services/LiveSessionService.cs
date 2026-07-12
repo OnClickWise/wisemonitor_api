@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using WiseMonitor.Api.Data;
 
 namespace WiseMonitor.Api.Services
@@ -8,13 +9,15 @@ namespace WiseMonitor.Api.Services
     public class LiveSessionService : ILiveSessionService
     {
         private readonly AppDbContext _context;
+        private readonly ILogger<LiveSessionService> _logger;
 
         private static readonly ConcurrentDictionary<Guid, string> _organizationSessions = new();
         private static readonly ConcurrentDictionary<Guid, ConcurrentDictionary<Guid, string>> _userSessions = new();
 
-        public LiveSessionService(AppDbContext context)
+        public LiveSessionService(AppDbContext context, ILogger<LiveSessionService> logger)
         {
             _context = context;
+            _logger = logger;
         }
 
         public Task<string> GetOrCreateSessionForOrganizationAsync(Guid organizationId)
@@ -25,7 +28,7 @@ namespace WiseMonitor.Api.Services
             sessionId = Guid.NewGuid().ToString();
             _organizationSessions[organizationId] = sessionId;
 
-            Console.WriteLine($"[LiveSessionService] 🟢 Nova sessão criada para organização {organizationId} -> {sessionId}");
+            _logger.LogInformation("Nova sessão criada para organização {OrganizationId} -> {SessionId}", organizationId, sessionId);
             return Task.FromResult(sessionId);
         }
 
@@ -34,7 +37,7 @@ namespace WiseMonitor.Api.Services
             var usersDict = _userSessions.GetOrAdd(organizationId, _ => new ConcurrentDictionary<Guid, string>());
             var sessionId = usersDict.GetOrAdd(userId, _ => Guid.NewGuid().ToString());
 
-            Console.WriteLine($"[LiveSessionService] 🟢 Sessão do usuário {userId} da organização {organizationId} -> {sessionId}");
+            _logger.LogInformation("Sessão do usuário {UserId} da organização {OrganizationId} -> {SessionId}", userId, organizationId, sessionId);
             return Task.FromResult(sessionId);
         }
 
@@ -43,7 +46,7 @@ namespace WiseMonitor.Api.Services
             _organizationSessions.TryRemove(organizationId, out _);
             _userSessions.TryRemove(organizationId, out _);
 
-            Console.WriteLine($"[LiveSessionService] 🟡 Sessão global encerrada para organização {organizationId}");
+            _logger.LogInformation("Sessão global encerrada para organização {OrganizationId}", organizationId);
             return Task.CompletedTask;
         }
 
@@ -53,7 +56,7 @@ namespace WiseMonitor.Api.Services
             if (_userSessions.TryGetValue(organizationId, out var usersDict))
             {
                 usersDict.TryRemove(userId, out _);
-                Console.WriteLine($"[LiveSessionService] 🟡 Sessão encerrada do usuário {userId} na organização {organizationId}");
+                _logger.LogInformation("Sessão encerrada do usuário {UserId} na organização {OrganizationId}", userId, organizationId);
             }
             return Task.CompletedTask;
         }

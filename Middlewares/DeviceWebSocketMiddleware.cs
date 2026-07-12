@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using WiseMonitor.Api.DTOs;
 using WiseMonitor.Api.Services;
 using System.Linq;
@@ -15,10 +16,12 @@ namespace WiseMonitor.Api.Middlewares
     public class DeviceWebSocketMiddleware
     {
         private readonly RequestDelegate _next;
+        private readonly ILogger<DeviceWebSocketMiddleware> _logger;
 
-        public DeviceWebSocketMiddleware(RequestDelegate next)
+        public DeviceWebSocketMiddleware(RequestDelegate next, ILogger<DeviceWebSocketMiddleware> logger)
         {
             _next = next;
+            _logger = logger;
         }
 
         public async Task InvokeAsync(HttpContext context)
@@ -30,14 +33,10 @@ namespace WiseMonitor.Api.Middlewares
                 return;
             }
 
-            if (context.User?.Claims != null)
+            if (context.User?.Claims != null && _logger.IsEnabled(LogLevel.Debug))
             {
-                Console.WriteLine("--- 🔍 Claims recebidos no WebSocket ---");
                 foreach (var claim in context.User.Claims)
-                {
-                    Console.WriteLine($"Key: '{claim.Type}' | Value: '{claim.Value}'");
-                }
-                Console.WriteLine("----------------------------------------");
+                    _logger.LogDebug("[WS Claim] {Type} = {Value}", claim.Type, claim.Value);
             }
 
             // 🔐 TENTATIVA 1: Busca flexível (organizationId, OrganizationId ou orgId)
@@ -59,7 +58,7 @@ namespace WiseMonitor.Api.Middlewares
             {
                 context.Response.StatusCode = StatusCodes.Status401Unauthorized;
                 await context.Response.WriteAsync("organizationId não encontrado ou inválido no token.");
-                Console.WriteLine($"[WS ❌] Falha ao ler OrganizationId. Valor lido: '{orgClaim ?? "NULO"}'");
+                _logger.LogWarning("[WS] Falha ao ler OrganizationId. Valor lido: '{OrgClaim}'", orgClaim ?? "NULO");
                 return;
             }
 
@@ -75,7 +74,7 @@ namespace WiseMonitor.Api.Middlewares
             LiveClient? client = null;
             Guid clientId = Guid.Empty;
 
-            Console.WriteLine($"[WS] ✅ Conexão aceita | Org={organizationId} | Sessão={sessionId}");
+            _logger.LogInformation("[WS] Conexão aceita | Org={OrganizationId} | Sessão={SessionId}", organizationId, sessionId);
 
             try
             {
@@ -123,7 +122,7 @@ namespace WiseMonitor.Api.Middlewares
 
                         clientId = hub.AddClient(client);
 
-                        Console.WriteLine($"[WS] 📡 HELLO | Org={organizationId} | Sess={sessionId} | Role={role}");
+                        _logger.LogInformation("[WS] HELLO | Org={OrganizationId} | Sess={SessionId} | Role={Role}", organizationId, sessionId, role);
                         continue;
                     }
 
@@ -150,7 +149,7 @@ namespace WiseMonitor.Api.Middlewares
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[WS ❌] Erro | Org={organizationId} | {ex.Message}");
+                _logger.LogError(ex, "[WS] Erro | Org={OrganizationId}", organizationId);
             }
             finally
             {
@@ -160,7 +159,7 @@ namespace WiseMonitor.Api.Middlewares
                 if (socket.State == WebSocketState.Open)
                     await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Encerrado", ct);
 
-                Console.WriteLine($"[WS 🔴] Conexão encerrada | Org={organizationId}");
+                _logger.LogInformation("[WS] Conexão encerrada | Org={OrganizationId}", organizationId);
             }
         }
     }

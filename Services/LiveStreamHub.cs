@@ -6,6 +6,7 @@ using System.Net.WebSockets;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using WiseMonitor.Api.DTOs;
 
 public enum LiveRole
@@ -32,6 +33,12 @@ public class LiveStreamHub
 {
     // SessionKey -> (ClientId -> Client)
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<Guid, LiveClient>> _rooms = new();
+    private readonly ILogger<LiveStreamHub> _logger;
+
+    public LiveStreamHub(ILogger<LiveStreamHub> logger)
+    {
+        _logger = logger;
+    }
 
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -149,7 +156,7 @@ public class LiveStreamHub
             _ => false
         };
 
-    private static async Task SafeSendAsync(
+    private async Task SafeSendAsync(
         WebSocket socket,
         object payload,
         CancellationToken ct)
@@ -164,10 +171,9 @@ public class LiveStreamHub
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[Hub] ❌ Send error: {ex.Message}");
+            _logger.LogError(ex, "[Hub] Send error");
         }
     }
 
-    private static void Log(string msg)
-        => Console.WriteLine($"[Hub] {DateTime.UtcNow:HH:mm:ss} | {msg}");
+    private void Log(string msg) => _logger.LogInformation("{Message}", msg);
 }

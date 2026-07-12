@@ -7,12 +7,20 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using WiseMonitor.Api.DTOs;
 
 namespace WiseMonitor.Api.Services
 {
     public class LiveMonitoringService : ILiveMonitoringService
     {
+        private readonly ILogger<LiveMonitoringService> _logger;
+
+        public LiveMonitoringService(ILogger<LiveMonitoringService> logger)
+        {
+            _logger = logger;
+        }
+
         private readonly JsonSerializerOptions _jsonOptions = new()
         {
             PropertyNameCaseInsensitive = true,
@@ -39,9 +47,9 @@ namespace WiseMonitor.Api.Services
             string type = "screenshot",
             string payload = "")
         {
-            Console.WriteLine(
-                $"[DeviceUpdate] Org={orgId}, Device={deviceId}, User={username ?? "Unknown"}, Type={type}, Thumb={(thumbnailUrl?.Length ?? 0)} chars"
-            );
+            _logger.LogDebug(
+                "[DeviceUpdate] Org={OrgId}, Device={DeviceId}, User={Username}, Type={Type}, Thumb={ThumbLength} chars",
+                orgId, deviceId, username ?? "Unknown", type, thumbnailUrl?.Length ?? 0);
 
             var message = new MonitoringMessageDto
             {
@@ -72,9 +80,9 @@ namespace WiseMonitor.Api.Services
 
         public void UpdateDeviceScreen(string deviceId, string orgId, byte[] screenshotBytes, string contentType = "image/png")
         {
-            Console.WriteLine(
-                $"[ScreenUpdate] Org={orgId}, Device={deviceId}, Bytes={screenshotBytes.Length}"
-            );
+            _logger.LogDebug(
+                "[ScreenUpdate] Org={OrgId}, Device={DeviceId}, Bytes={Bytes}",
+                orgId, deviceId, screenshotBytes.Length);
 
             var base64 = Convert.ToBase64String(screenshotBytes);
 
@@ -99,9 +107,9 @@ namespace WiseMonitor.Api.Services
         {
             var orgId = dto.OrgId ?? "default";
 
-            Console.WriteLine(
-                $"[DeviceRegister] Org={orgId}, Device={dto.DeviceId}, Status={dto.Status ?? "online"}, ThumbSize={(dto.ThumbnailUrl?.Length ?? 0)} FullSize={(dto.FullScreenUrl?.Length ?? 0)}"
-            );
+            _logger.LogDebug(
+                "[DeviceRegister] Org={OrgId}, Device={DeviceId}, Status={Status}, ThumbSize={ThumbSize} FullSize={FullSize}",
+                orgId, dto.DeviceId, dto.Status ?? "online", dto.ThumbnailUrl?.Length ?? 0, dto.FullScreenUrl?.Length ?? 0);
 
             var message = new MonitoringMessageDto
             {
@@ -125,24 +133,24 @@ namespace WiseMonitor.Api.Services
         // ================================
         public void RegisterAdmin(string orgId, string sessionId, WebSocket adminSocket)
         {
-            Console.WriteLine(
-                $"[AdminConnected] Org={orgId}, Session={sessionId}, SocketState={adminSocket.State}"
-            );
+            _logger.LogInformation(
+                "[AdminConnected] Org={OrgId}, Session={SessionId}, SocketState={SocketState}",
+                orgId, sessionId, adminSocket.State);
 
             var orgAdmins = _adminSockets.GetOrAdd(orgId, _ => new ConcurrentDictionary<string, WebSocket>());
             orgAdmins[sessionId] = adminSocket;
 
-            Console.WriteLine($"[AdminCount] Org={orgId} agora tem {orgAdmins.Count} admins conectados.");
+            _logger.LogInformation("[AdminCount] Org={OrgId} agora tem {Count} admins conectados.", orgId, orgAdmins.Count);
         }
 
         public void UnregisterAdmin(string orgId, string sessionId)
         {
-            Console.WriteLine($"[AdminDisconnected] Org={orgId}, Session={sessionId}");
+            _logger.LogInformation("[AdminDisconnected] Org={OrgId}, Session={SessionId}", orgId, sessionId);
 
             if (_adminSockets.TryGetValue(orgId, out var orgAdmins))
             {
                 orgAdmins.TryRemove(sessionId, out _);
-                Console.WriteLine($"[AdminCount] Org={orgId} agora tem {orgAdmins.Count} admins conectados.");
+                _logger.LogInformation("[AdminCount] Org={OrgId} agora tem {Count} admins conectados.", orgId, orgAdmins.Count);
             }
         }
 
@@ -153,7 +161,7 @@ namespace WiseMonitor.Api.Services
         {
             var set = _watchers.GetOrAdd(deviceId, _ => new ConcurrentDictionary<string, byte>());
             set[sessionId] = 0;
-            Console.WriteLine($"[Watcher+] Device={deviceId}, Session={sessionId}, Total={set.Count}");
+            _logger.LogInformation("[Watcher+] Device={DeviceId}, Session={SessionId}, Total={Total}", deviceId, sessionId, set.Count);
         }
 
         public void RemoveWatcher(string deviceId, string sessionId)
@@ -161,7 +169,7 @@ namespace WiseMonitor.Api.Services
             if (_watchers.TryGetValue(deviceId, out var set))
             {
                 set.TryRemove(sessionId, out _);
-                Console.WriteLine($"[Watcher-] Device={deviceId}, Session={sessionId}, Total={set.Count}");
+                _logger.LogInformation("[Watcher-] Device={DeviceId}, Session={SessionId}, Total={Total}", deviceId, sessionId, set.Count);
             }
         }
 
@@ -179,7 +187,7 @@ namespace WiseMonitor.Api.Services
         // ================================
         public IReadOnlyList<MonitoringMessageDto> GetCachedMessages(string orgId)
         {
-            Console.WriteLine($"[GetCache] Org={orgId}");
+            _logger.LogDebug("[GetCache] Org={OrgId}", orgId);
 
             if (_messageCache.TryGetValue(orgId, out var messages))
             {
@@ -192,14 +200,14 @@ namespace WiseMonitor.Api.Services
 
         public MonitoringMessageDto? GetLiveDevice(string deviceId)
         {
-            Console.WriteLine($"[GetLiveDevice] Device={deviceId}");
+            _logger.LogDebug("[GetLiveDevice] Device={DeviceId}", deviceId);
             _liveDevices.TryGetValue(deviceId, out var device);
             return device;
         }
 
         public IReadOnlyCollection<MonitoringMessageDto> GetAllLiveDevices()
         {
-            Console.WriteLine("[GetAllDevices]");
+            _logger.LogDebug("[GetAllDevices]");
             return _liveDevices.Values.ToList();
         }
 
@@ -210,11 +218,11 @@ namespace WiseMonitor.Api.Services
         {
             var orgId = frame.OrgId ?? "default";
 
-            Console.WriteLine($"[Broadcast] Org={orgId}, Device={deviceId}");
+            _logger.LogDebug("[Broadcast] Org={OrgId}, Device={DeviceId}", orgId, deviceId);
 
             if (!_adminSockets.TryGetValue(orgId, out var admins) || !admins.Any())
             {
-                Console.WriteLine($"[Broadcast] Nenhum admin conectado na org {orgId}");
+                _logger.LogDebug("[Broadcast] Nenhum admin conectado na org {OrgId}", orgId);
                 return;
             }
 
