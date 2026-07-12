@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using DotNetEnv;
+using Serilog;
 
 using WiseMonitor.Api.Authorization;
 using WiseMonitor.Api.Config;
@@ -16,12 +17,30 @@ using WiseMonitor.Api.Helpers;
 using WiseMonitor.Api.Extensions;
 using Microsoft.AspNetCore.Mvc;
 
-var builder = WebApplication.CreateBuilder(args);
-
 // =======================
-// LOAD .ENV
+// LOAD .ENV (antes do Serilog para poder ler LOG_DIRECTORY etc. se vier do .env)
 // =======================
 Env.Load();
+
+// =======================
+// SERILOG (console + arquivo)
+// =======================
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Information()
+    .MinimumLevel.Override("Microsoft.AspNetCore", Serilog.Events.LogEventLevel.Warning)
+    .Enrich.FromLogContext()
+    .WriteTo.Console()
+    .WriteTo.File(
+        Path.Combine(AppContext.BaseDirectory, "logs", "wisemonitor-api-.log"),
+        rollingInterval: RollingInterval.Day,
+        retainedFileCountLimit: 14)
+    .CreateLogger();
+
+try
+{
+
+var builder = WebApplication.CreateBuilder(args);
+builder.Host.UseSerilog();
 
 // =======================
 // JWT
@@ -66,7 +85,7 @@ if (string.IsNullOrWhiteSpace(dbHost))
 var connectionString =
     $"Host={dbHost};Port={dbPort};Database={dbName};Username={dbUser};Password={dbPass};Search Path=public;Pooling=true;Timeout=15;CommandTimeout=30";
 
-Console.WriteLine($"[DB] Conectando → {dbHost}:{dbPort}");
+Log.Information("[DB] Conectando → {DbHost}:{DbPort}", dbHost, dbPort);
 
 builder.Services.AddDbContext<AppDbContext>(options =>
 {
@@ -242,7 +261,7 @@ var app = builder.Build();
 // =======================
 var port = Environment.GetEnvironmentVariable("APP_PORT") ?? "8080";
 app.Urls.Add($"http://0.0.0.0:{port}");
-Console.WriteLine($"API rodando na porta {port}");
+Log.Information("API rodando na porta {Port}", port);
 
 // =======================
 // Swagger (somente Development)
@@ -286,26 +305,26 @@ if (autoMigrate)
     try
     {
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        Console.WriteLine("[DB] Aplicando migrations...");
+        Log.Information("[DB] Aplicando migrations...");
 
         if (db.Database.CanConnect())
         {
             db.Database.Migrate();
-            Console.WriteLine("[DB] Banco atualizado com sucesso");
+            Log.Information("[DB] Banco atualizado com sucesso");
         }
         else
         {
-            Console.WriteLine("[DB] Não conseguiu conectar no banco");
+            Log.Warning("[DB] Não conseguiu conectar no banco");
         }
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"[DB] ERRO: {ex}");
+        Log.Error(ex, "[DB] Erro ao aplicar migrations");
     }
 }
 else
 {
-    Console.WriteLine("[DB] AUTO_MIGRATE desativado — rode as migrations como um passo separado do deploy.");
+    Log.Information("[DB] AUTO_MIGRATE desativado — rode as migrations como um passo separado do deploy.");
 }
 
 // =======================
@@ -335,20 +354,30 @@ using (var scope = app.Services.CreateScope())
             });
 
             db.SaveChanges();
-            Console.WriteLine($"[SEED] SuperAdmin criado → {superAdminEmail}");
-            Console.WriteLine("[SEED] Senha definida via SUPERADMIN_PASSWORD (ou padrão de fallback) — nunca logada aqui.");
-            Console.WriteLine("[SEED] ⚠️  Troque a senha após o primeiro login!");
+            Log.Information("[SEED] SuperAdmin criado → {SuperAdminEmail}", superAdminEmail);
+            Log.Information("[SEED] Senha definida via SUPERADMIN_PASSWORD (ou padrão de fallback) — nunca logada aqui.");
+            Log.Warning("[SEED] Troque a senha após o primeiro login!");
         }
         else
         {
-            Console.WriteLine("[SEED] SuperAdmin já existe — nenhuma ação necessária.");
+            Log.Information("[SEED] SuperAdmin já existe — nenhuma ação necessária.");
         }
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"[SEED] ERRO ao criar SuperAdmin: {ex.Message}");
+        Log.Error(ex, "[SEED] Erro ao criar SuperAdmin");
     }
 }
 
 app.Run();
+
+}
+catch (Exception ex)
+{
+    Log.Fatal(ex, "WiseMonitor.Api encerrou de forma inesperada durante o startup");
+}
+finally
+{
+    Log.CloseAndFlush();
+}
 

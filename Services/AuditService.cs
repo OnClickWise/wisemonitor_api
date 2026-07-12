@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using WiseMonitor.Api.Data;
 using WiseMonitor.Api.DTOs.AuditLog;
 using WiseMonitor.Api.Models;
@@ -11,8 +12,13 @@ namespace WiseMonitor.Api.Services
     public class AuditService : IAuditService
     {
         private readonly AppDbContext _context;
+        private readonly ILogger<AuditService> _logger;
 
-        public AuditService(AppDbContext context) => _context = context;
+        public AuditService(AppDbContext context, ILogger<AuditService> logger)
+        {
+            _context = context;
+            _logger = logger;
+        }
 
         public async Task LogAsync(
             string action,
@@ -55,7 +61,7 @@ namespace WiseMonitor.Api.Services
             catch (Exception ex)
             {
                 // Audit não deve quebrar o fluxo principal
-                Console.Error.WriteLine($"[AuditService] Falha ao salvar log: {ex.Message}");
+                _logger.LogError(ex, "Falha ao salvar log de auditoria");
             }
         }
 

@@ -13,13 +13,16 @@ namespace WiseMonitor.Api.Controllers
     {
         private readonly LiveMonitoringService _liveService;
         private readonly IScreenshotService _screenshotService;
+        private readonly ILogger<LiveMonitoringController> _logger;
 
         public LiveMonitoringController(
             LiveMonitoringService liveService,
-            IScreenshotService screenshotService)
+            IScreenshotService screenshotService,
+            ILogger<LiveMonitoringController> logger)
         {
             _liveService = liveService;
             _screenshotService = screenshotService;
+            _logger = logger;
         }
 
         // ✅ Upload de Screenshot
@@ -49,7 +52,7 @@ namespace WiseMonitor.Api.Controllers
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[Screenshot Upload] Erro: {ex.Message}");
+                _logger.LogError(ex, "[Screenshot Upload] Erro ao salvar screenshot");
                 return StatusCode(500, new { message = "Erro ao salvar screenshot", error = ex.Message });
             }
         }
@@ -73,7 +76,7 @@ namespace WiseMonitor.Api.Controllers
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[Live Frame] Erro: {ex.Message}");
+                _logger.LogError(ex, "[Live Frame] Erro ao processar frame");
                 return StatusCode(500, new { message = "Erro ao processar frame", error = ex.Message });
             }
         }
@@ -123,7 +126,7 @@ namespace WiseMonitor.Api.Controllers
             Response.Headers.Append("Cache-Control", "no-cache");
             Response.Headers.Append("Connection", "keep-alive");
 
-            Console.WriteLine("[SSE] Cliente conectado ao SSE");
+            _logger.LogInformation("[SSE] Cliente conectado ao SSE");
 
             while (!cancellationToken.IsCancellationRequested)
             {
@@ -140,14 +143,14 @@ namespace WiseMonitor.Api.Controllers
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[SSE] Erro ao enviar dados: {ex.Message}");
+                    _logger.LogError(ex, "[SSE] Erro ao enviar dados");
                     break;
                 }
 
                 await Task.Delay(2000, cancellationToken);
             }
 
-            Console.WriteLine("[SSE] Conexão SSE finalizada");
+            _logger.LogInformation("[SSE] Conexão SSE finalizada");
         }
 
         // 🔹 Polling simples

@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using WiseMonitor.Api.DTOs.Team;
 using WiseMonitor.Api.Models;
 using WiseMonitor.Api.Models.Enums;
@@ -9,13 +10,16 @@ namespace WiseMonitor.Api.Services
     {
         private readonly ITeamRepository _teamRepo;
         private readonly IUserRepository _userRepo;
+        private readonly ILogger<TeamService> _logger;
 
         public TeamService(
             ITeamRepository teamRepo,
-            IUserRepository userRepo)
+            IUserRepository userRepo,
+            ILogger<TeamService> logger)
         {
             _teamRepo = teamRepo;
             _userRepo = userRepo;
+            _logger = logger;
         }
 
         public Task AddMemberAsync(Guid teamId, Guid userId, Guid organizationId)
@@ -39,7 +43,7 @@ namespace WiseMonitor.Api.Services
 
             if (!managerRoles.Contains(normalizedRole))
             {
-                Console.WriteLine($"[TeamService] Permissão insuficiente. Role: '{manager.Role}'");
+                _logger.LogWarning("Permissão insuficiente para responsável de equipe. Role: {Role}", manager.Role);
                 throw new Exception($"Usuário não tem permissão para ser responsável. Cargo atual: {manager.Role}");
             }
 

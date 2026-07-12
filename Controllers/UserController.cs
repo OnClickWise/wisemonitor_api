@@ -23,15 +23,18 @@ namespace WiseMonitor.Api.Controllers
         private readonly IUserService _userService;
         private readonly IAuditService _auditService;
         private readonly IHttpContextAccessor _httpContextAccessor;
+        private readonly ILogger<UserController> _logger;
 
         public UserController(
             IUserService userService,
             IAuditService auditService,
-            IHttpContextAccessor httpContextAccessor)
+            IHttpContextAccessor httpContextAccessor,
+            ILogger<UserController> logger)
         {
             _userService = userService;
             _auditService = auditService;
             _httpContextAccessor = httpContextAccessor;
+            _logger = logger;
         }
 
         private Guid GetOrganizationId()
@@ -73,7 +76,7 @@ namespace WiseMonitor.Api.Controllers
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"Erro ao criar usuário: {ex}");
+                _logger.LogError(ex, "Erro ao criar usuário");
                 return BadRequest(new { error = "Erro ao criar usuário." });
             }
         }
@@ -94,7 +97,7 @@ namespace WiseMonitor.Api.Controllers
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"Erro ao listar usuários: {ex}");
+                _logger.LogError(ex, "Erro ao listar usuários");
                 return StatusCode(500, new { error = "Erro interno ao listar usuários." });
             }
         }
@@ -145,7 +148,7 @@ namespace WiseMonitor.Api.Controllers
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"Erro ao atualizar usuário: {ex}");
+                _logger.LogError(ex, "Erro ao atualizar usuário");
                 return BadRequest(new { error = "Erro ao atualizar usuário." });
             }
         }
@@ -180,7 +183,7 @@ namespace WiseMonitor.Api.Controllers
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"Erro ao deletar usuário: {ex}");
+                _logger.LogError(ex, "Erro ao deletar usuário");
                 return BadRequest(new { error = "Erro ao deletar usuário." });
             }
         }
@@ -227,7 +230,7 @@ namespace WiseMonitor.Api.Controllers
                 }
                 catch (Exception ex)
                 {
-                    Console.Error.WriteLine(ex);
+                    _logger.LogError(ex, "Erro ao atualizar avatar do usuário");
 
                     return BadRequest(new
                     {

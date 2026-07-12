@@ -54,7 +54,8 @@ public class AuthServiceTests
             .Build();
 
     private static AuthService CreateService(AppDbContext db) =>
-        new AuthService(db, CreateConfig(), new FakeJwtService(), new FakeLiveSessionService(), new FakeEmailService());
+        new AuthService(db, CreateConfig(), new FakeJwtService(), new FakeLiveSessionService(), new FakeEmailService(),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<AuthService>.Instance);
 
     // ─── HashPassword ──────────────────────────────────────────
 

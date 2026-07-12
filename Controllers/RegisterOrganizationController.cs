@@ -12,13 +12,16 @@ public class RegisterOrganizationController : ControllerBase
 {
     private readonly IOrganizationService _organizationService;
     private readonly IOrganizationRepository _organizationRepository;
+    private readonly ILogger<RegisterOrganizationController> _logger;
 
     public RegisterOrganizationController(
         IOrganizationService organizationService,
-        IOrganizationRepository organizationRepository)
+        IOrganizationRepository organizationRepository,
+        ILogger<RegisterOrganizationController> logger)
     {
         _organizationService = organizationService;
         _organizationRepository = organizationRepository;
+        _logger = logger;
     }
 
     /// <summary>
@@ -47,7 +50,7 @@ public class RegisterOrganizationController : ControllerBase
         }
         catch (System.Exception ex)
         {
-            Console.Error.WriteLine($"Erro ao registrar organização: {ex}");
+            _logger.LogError(ex, "Erro ao registrar organização");
             return StatusCode(500, new { Success = false, ErrorMessage = "Erro interno ao registrar a organização." });
         }
     }
@@ -90,7 +93,7 @@ public class RegisterOrganizationController : ControllerBase
         }
         catch (System.Exception ex)
         {
-            Console.Error.WriteLine($"Erro ao buscar organização: {ex}");
+            _logger.LogError(ex, "Erro ao buscar organização");
             return StatusCode(500, new { Success = false, ErrorMessage = "Erro interno ao buscar organização." });
         }
     }
@@ -140,7 +143,7 @@ public class RegisterOrganizationController : ControllerBase
         }
         catch (System.Exception ex)
         {
-            Console.Error.WriteLine($"Erro ao atualizar organização: {ex}");
+            _logger.LogError(ex, "Erro ao atualizar organização");
             return StatusCode(500, new { Success = false, ErrorMessage = "Erro interno ao atualizar organização." });
         }
     }

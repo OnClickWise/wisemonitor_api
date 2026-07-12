@@ -16,13 +16,16 @@ namespace WiseMonitor.Api.Controllers
     {
         private readonly IScreenshotService _screenshotService;
         private readonly ILiveMonitoringService _liveService;
+        private readonly ILogger<ScreenshotsController> _logger;
 
         public ScreenshotsController(
             IScreenshotService screenshotService,
-            ILiveMonitoringService liveService)
+            ILiveMonitoringService liveService,
+            ILogger<ScreenshotsController> logger)
         {
             _screenshotService = screenshotService;
             _liveService = liveService;
+            _logger = logger;
         }
 
         // ============================
@@ -76,7 +79,7 @@ namespace WiseMonitor.Api.Controllers
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[Upload Erro] {ex.Message}");
+                _logger.LogError(ex, "[Upload Erro]");
                 return StatusCode(500, new { message = "Erro ao salvar", error = ex.Message });
             }
         }

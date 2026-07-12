@@ -21,3 +21,6 @@ obj/
 # Uploads de usuário (dados reais de runtime — nunca versionar)
 wwwroot/uploads/**
 !wwwroot/uploads/.gitkeep
+
+# Logs (Serilog)
+logs/

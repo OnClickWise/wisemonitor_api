@@ -7,6 +7,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using WiseMonitor.Api.Data;
 using WiseMonitor.Api.DTOs;
@@ -22,19 +23,22 @@ namespace WiseMonitor.Api.Services
         private readonly IJwtService _jwtService;
         private readonly ILiveSessionService _liveSessionService;
         private readonly IEmailService _emailService;
+        private readonly ILogger<AuthService> _logger;
 
         public AuthService(
             AppDbContext context,
             IConfiguration configuration,
             IJwtService jwtService,
             ILiveSessionService liveSessionService,
-            IEmailService emailService)
+            IEmailService emailService,
+            ILogger<AuthService> logger)
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
             _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
             _jwtService = jwtService ?? throw new ArgumentNullException(nameof(jwtService));
             _liveSessionService = liveSessionService ?? throw new ArgumentNullException(nameof(liveSessionService));
             _emailService = emailService ?? throw new ArgumentNullException(nameof(emailService));
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
         public async Task<LoginResponseDTO> LoginAsync(LoginRequestDTO loginDto)
@@ -184,7 +188,7 @@ namespace WiseMonitor.Api.Services
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[AuthService] Falha ao enviar e-mail de redefinição: {ex.Message}");
+                _logger.LogError(ex, "Falha ao enviar e-mail de redefinição de senha para {Email}", user.Email);
             }
         }
 
