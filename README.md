@@ -235,7 +235,7 @@ Armazenamento e consulta de screenshots do monitoramento.
 
 ### 🔴 Monitoramento ao Vivo (Live Monitoring)
 
-Monitoramento em tempo real dos dispositivos.
+Estado dos dispositivos em tempo real (dashboard).
 
 **Endpoints:**
 
@@ -250,10 +250,32 @@ Monitoramento em tempo real dos dispositivos.
 
 **Funcionalidades:**
 
-* Streaming em tempo real
-* Atualização de status
+* Atualização de status dos devices
 * SSE e Polling
 * Monitoramento multi-dispositivo
+
+---
+
+### 🎥 Vídeo Ao Vivo + Histórico (Video Segments)
+
+Vídeo real da tela (segmentos de ~10s), tanto para "ao vivo" quanto para
+histórico correlacionado com app-focus/teclado. Ver
+[`docs/video-streaming-flow.md`](docs/video-streaming-flow.md) para o fluxo
+completo (desktop → backend → dashboard).
+
+**Endpoints:**
+
+* POST `/api/video-segments/upload`
+* GET `/api/video-segments/{id}`
+* GET `/api/video-segments/latest?deviceId=`
+* GET `/api/video-segments/history?deviceId=&from=&to=`
+
+**Funcionalidades:**
+
+* Gravação contínua enquanto o monitoramento está ativo
+* Reprodução com suporte a `Range` (`<video>` do navegador)
+* Retenção configurável por tempo (`VIDEO_SEGMENT_RETENTION_HOURS`)
+* Histórico correlacionado com app em foco e palavras digitadas
 
 ---
 
