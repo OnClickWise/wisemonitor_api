@@ -1,8 +1,11 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using System.Threading.RateLimiting;
 using DotNetEnv;
 using Serilog;
 
@@ -90,6 +93,40 @@ Log.Information("[DB] Conectando → {DbHost}:{DbPort}", dbHost, dbPort);
 builder.Services.AddDbContext<AppDbContext>(options =>
 {
     options.UseNpgsql(connectionString);
+});
+
+// =======================
+// HEALTH CHECKS
+// =======================
+builder.Services.AddHealthChecks()
+    .AddNpgSql(connectionString, name: "postgres", tags: new[] { "ready" });
+
+// =======================
+// RATE LIMITING
+// =======================
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    // Login/forgot-password: alvo primário de força bruta/enumeração de e-mails.
+    options.AddFixedWindowLimiter("auth", opt =>
+    {
+        opt.PermitLimit = 10;
+        opt.Window = TimeSpan.FromMinutes(1);
+        opt.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+        opt.QueueLimit = 0;
+    });
+
+    // Limite global sensato por IP para o restante da API.
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 300,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            }));
 });
 
 // =======================
@@ -277,6 +314,7 @@ if (app.Environment.IsDevelopment())
 // =======================
 app.UseRouting();
 app.UseCors("Default");
+app.UseRateLimiter();
 app.UseWebSockets();
 app.UseAuthentication();
 app.UseAuthorization();
@@ -288,6 +326,20 @@ app.UseMiddleware<TenantMiddleware>();
 
 app.UseStaticFiles();
 app.MapControllers().RequireCors("Default");
+
+// =======================
+// HEALTH CHECK ENDPOINTS
+// =======================
+// /health       → liveness simples (o processo está de pé)
+// /health/ready → readiness (banco de dados acessível) — usado pelo Cloud Run/orquestrador
+app.MapHealthChecks("/health", new HealthCheckOptions
+{
+    Predicate = _ => false
+});
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("ready")
+});
 
 // =======================
 // MIGRATION SEGURA
