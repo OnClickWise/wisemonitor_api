@@ -66,6 +66,13 @@ builder.Services.AddHttpClient();
 
 var key = Encoding.UTF8.GetBytes(jwtSettings.SecretKey);
 
+// JwtService (usado no login para EMITIR tokens) lê "Jwt:*" via IConfiguration —
+// propaga os mesmos valores do JWT_SECRET/ISSUER/AUDIENCE (env) para lá também,
+// já que appsettings.json nunca deve conter o segredo real.
+builder.Configuration["Jwt:SecretKey"] = jwtSettings.SecretKey;
+builder.Configuration["Jwt:Issuer"] = jwtSettings.Issuer;
+builder.Configuration["Jwt:Audience"] = jwtSettings.Audience;
+
 // =======================
 // SMTP (senha via env var, nunca em appsettings.json)
 // =======================
