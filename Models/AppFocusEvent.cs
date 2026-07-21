@@ -19,6 +19,7 @@ public class AppFocusEvent
     // NOVOS CAMPOS (WEB)
     public string? Url { get; set; }              // https://chat.openai.com
     public string? FaviconUrl { get; set; }       // https://site.com/favicon.ico
+    public string? IconBase64 { get; set; }       // Ícone do aplicativo em Base64
 
     // Tempo
     public DateTime StartTime { get; set; }

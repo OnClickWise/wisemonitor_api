@@ -16,6 +16,7 @@ namespace WiseMonitor.Api.DTOs
 
         public string? Url { get; set; }
         public string? FaviconUrl { get; set; }
+        public string? IconBase64 { get; set; }
 
         public DateTime StartTime { get; set; }
         public DateTime? EndTime { get; set; }
