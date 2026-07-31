@@ -222,7 +222,7 @@ builder.Services.AddSwaggerGen();
 var allowedOriginsRaw = Environment.GetEnvironmentVariable("ALLOWED_ORIGINS");
 var allowedOrigins = string.IsNullOrWhiteSpace(allowedOriginsRaw)
     ? (builder.Environment.IsDevelopment()
-        ? new[] { "http://localhost:3000", "http://localhost:5173" }
+        ? new[] { "http://localhost:3000", "http://localhost:5173", "http://localhost:5174" }
         : Array.Empty<string>())
     : allowedOriginsRaw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
