@@ -21,11 +21,17 @@ file class FakeLiveMonitoringService : ILiveMonitoringService
 
     public void UpdateDevice(string deviceId, string orgId, string username, string department, string thumbnailUrl, string fullScreenUrl, string type = "screenshot", string payload = "") { }
     public void RegisterOrUpdateDevice(WiseMonitor.Api.DTOs.LiveDeviceUpdateDTO dto) { }
+    public void UpdateDeviceUser(string deviceId, string userId, string username) { }
     public void RegisterAdmin(string orgId, string sessionId, System.Net.WebSockets.WebSocket adminSocket) { }
     public void UnregisterAdmin(string orgId, string sessionId) { }
     public void AddWatcher(string deviceId, string sessionId) { }
     public void RemoveWatcher(string deviceId, string sessionId) { }
     public void RemoveWatcherFromAllDevices(string sessionId) { }
+    public event Action<string, bool>? WatchStateChanged;
+    public bool IsWatched(string deviceId) => false;
+    public IReadOnlyList<System.Net.WebSockets.WebSocket> GetWatcherSockets(string deviceId) => Array.Empty<System.Net.WebSockets.WebSocket>();
+    public void MarkDeviceOffline(string deviceId) { }
+    public IReadOnlyCollection<string> BroadcastExpiredDevices() => Array.Empty<string>();
     public IReadOnlyList<WiseMonitor.Api.DTOs.MonitoringMessageDto> GetCachedMessages(string orgId) => Array.Empty<WiseMonitor.Api.DTOs.MonitoringMessageDto>();
     public WiseMonitor.Api.DTOs.MonitoringMessageDto? GetLiveDevice(string deviceId) => null;
     public IReadOnlyCollection<WiseMonitor.Api.DTOs.MonitoringMessageDto> GetAllLiveDevices() => Array.Empty<WiseMonitor.Api.DTOs.MonitoringMessageDto>();
@@ -48,7 +54,8 @@ public class VideoSegmentServiceTests
         new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["VideoSegmentRetentionHours"] = retentionHours.ToString()
+                ["VideoSegmentRetentionHours"] = retentionHours.ToString(),
+                ["Jwt:SecretKey"] = "super-secret-key-for-tests-must-be-long-enough-32chars"
             })
             .Build();
 

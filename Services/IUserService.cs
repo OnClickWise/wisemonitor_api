@@ -8,7 +8,7 @@ namespace WiseMonitor.Api.Services
     public interface IUserService
     {
         Task<UserDTO> CreateUserAsync(UserCreateDTO dto, Guid organizationId);
-        Task<IEnumerable<UserDTO>> GetAllUsersAsync(Guid organizationId);
+        Task<IEnumerable<UserDTO>> GetAllUsersAsync(Guid organizationId, Guid callerId, string callerRole);
 
         Task<UserDTO?> GetUserByIdAsync(Guid id, Guid organizationId);
         Task<bool> DeleteUserAsync(Guid id, Guid organizationId);

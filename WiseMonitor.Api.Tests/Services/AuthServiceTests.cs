@@ -33,6 +33,13 @@ file class FakeEmailService : IEmailService
     public Task SendEmailAsync(string to, string subject, string htmlMessage) => Task.CompletedTask;
 }
 
+file class FakeRefreshTokenService : IRefreshTokenService
+{
+    public Task<string> IssueAsync(Guid userId) => Task.FromResult("fake-refresh-token");
+    public Task<(User User, string NewRefreshToken)?> RedeemAsync(string rawToken) =>
+        Task.FromResult<(User User, string NewRefreshToken)?>(null);
+}
+
 public class AuthServiceTests
 {
     private static AppDbContext CreateDb()
@@ -55,6 +62,7 @@ public class AuthServiceTests
 
     private static AuthService CreateService(AppDbContext db) =>
         new AuthService(db, CreateConfig(), new FakeJwtService(), new FakeLiveSessionService(), new FakeEmailService(),
+            new FakeRefreshTokenService(),
             Microsoft.Extensions.Logging.Abstractions.NullLogger<AuthService>.Instance);
 
     // ─── HashPassword ──────────────────────────────────────────

@@ -57,7 +57,26 @@ namespace WiseMonitor.Api.Services
                 Members = new List<TeamMember>()
             };
 
-            // Adiciona os membros (se houver)
+            // Garante que o administrador principal também esteja na lista de administradores
+            var managerIds = dto.ManagerIds
+                .Append(dto.ManagerId)
+                .Distinct()
+                .ToList();
+
+            // Adiciona os administradores da equipe
+            foreach (var managerId in managerIds)
+            {
+                var managerUser = await _userRepo.GetByIdAsync(managerId, organizationId);
+                if (managerUser == null) continue;
+
+                team.Members.Add(new TeamMember
+                {
+                    UserId = managerId,
+                    IsManager = true
+                });
+            }
+
+            // Adiciona os membros comuns (se houver)
             if (dto.MemberIds != null)
             {
                 foreach (var userId in dto.MemberIds.Distinct())
@@ -65,9 +84,14 @@ namespace WiseMonitor.Api.Services
                     var user = await _userRepo.GetByIdAsync(userId, organizationId);
                     if (user == null) continue;
 
+                    // Se esse usuário já foi adicionado como administrador,
+                    // não adicionamos novamente por causa da chave TeamId + UserId
+                    if (team.Members.Any(m => m.UserId == userId)) continue;
+
                     team.Members.Add(new TeamMember
                     {
-                        UserId = userId
+                        UserId = userId,
+                        IsManager = false
                     });
                 }
             }
@@ -102,12 +126,22 @@ namespace WiseMonitor.Api.Services
                 ManagerName = t.Manager.FullName,
                 WorkScheduleId = t.DefaultWorkScheduleId,
                 WorkScheduleName = t.DefaultWorkSchedule?.Name,
-                Members = t.Members.Select(m => new TeamMemberDTO
-                {
-                    UserId = m.UserId,
-                    FullName = m.User.FullName,
-                    Role = m.User.Role
-                }).ToList()
+                Managers = t.Members
+                    .Where(m => m.IsManager)
+                    .Select(m => new TeamMemberDTO
+                    {
+                        UserId = m.UserId,
+                        FullName = m.User.FullName,
+                        Role = m.User.Role
+                    }).ToList(),
+                Members = t.Members
+                    .Where(m => !m.IsManager)
+                    .Select(m => new TeamMemberDTO
+                    {
+                        UserId = m.UserId,
+                        FullName = m.User.FullName,
+                        Role = m.User.Role
+                    }).ToList()
             }).ToList();
         }
 
@@ -152,22 +186,55 @@ namespace WiseMonitor.Api.Services
             team.DefaultWorkScheduleId = dto.WorkScheduleId;
 
 
-            if (dto.ManagerId.HasValue && dto.ManagerId.Value != team.ManagerId)
+            if (dto.ManagerId.HasValue)
             {
-                var newManager = await _userRepo.GetByIdAsync(dto.ManagerId.Value, organizationId);
-                if (newManager == null) 
-                    throw new Exception("Novo gerente informado não encontrado.");
-                    
+                var mainManager = await _userRepo.GetByIdAsync(dto.ManagerId.Value, organizationId);
+                if (mainManager == null)
+                    throw new Exception("Administrador principal informado não encontrado.");
+
                 team.ManagerId = dto.ManagerId.Value;
             }
 
+            // Junta o administrador principal com os demais administradores selecionados
+            var managerIds = dto.ManagerIds
+                .Concat(dto.ManagerId.HasValue ? new[] { dto.ManagerId.Value } : Array.Empty<Guid>())
+                .Distinct()
+                .ToHashSet();
+
+            // Primeiro, atualiza quem já está na equipe
+            foreach (var member in team.Members)
+            {
+                member.IsManager = managerIds.Contains(member.UserId);
+            }
+
+            // Depois adiciona administradores que ainda não fazem parte da equipe
+            foreach (var managerId in managerIds)
+            {
+                var existingMember = team.Members.FirstOrDefault(m => m.UserId == managerId);
+                if (existingMember != null)
+                {
+                    existingMember.IsManager = true;
+                    continue;
+                }
+
+                var managerUser = await _userRepo.GetByIdAsync(managerId, organizationId);
+                if (managerUser == null) continue;
+
+                team.Members.Add(new TeamMember
+                {
+                    TeamId = team.Id,
+                    UserId = managerId,
+                    IsManager = true
+                });
+            }
+
             // 4. LÓGICA DE MEMBROS (Adicionar/Remover)
-            // Se a lista vier vazia, removemos todos (exceto se sua regra de negócio impedir)
+            // Se a lista vier vazia, removemos todos os membros comuns (administradores nunca são removidos aqui)
             if (dto.MemberIds != null)
             {
-                // A. REMOVER: Quem está no banco, mas NÃO está na nova lista do DTO
+                // A. REMOVER: Quem está no banco, mas NÃO está na nova lista do DTO (nunca remove administradores)
                 var membersToRemove = team.Members
-                    .Where(m => !dto.MemberIds.Contains(m.UserId))
+                    .Where(m => !m.IsManager && !dto.MemberIds.Contains(m.UserId))
                     .ToList(); // ToList é essencial aqui para não quebrar o loop
 
                 foreach (var member in membersToRemove)
@@ -178,7 +245,7 @@ namespace WiseMonitor.Api.Services
                 // B. ADICIONAR: Quem está na nova lista, mas NÃO está no banco
                 // Criamos um HashSet dos IDs atuais para busca rápida
                 var currentMemberIds = team.Members.Select(m => m.UserId).ToHashSet();
-                
+
                 foreach (var newUserId in dto.MemberIds)
                 {
                     // Se o usuário já está na equipe, pula
@@ -188,16 +255,17 @@ namespace WiseMonitor.Api.Services
                     var userExists = await _userRepo.GetByIdAsync(newUserId, organizationId);
                     if (userExists != null)
                     {
-                        team.Members.Add(new TeamMember 
-                        { 
+                        team.Members.Add(new TeamMember
+                        {
                             UserId = newUserId,
-                            TeamId = team.Id // O EF preenche isso, mas é bom garantir
+                            TeamId = team.Id, // O EF preenche isso, mas é bom garantir
+                            IsManager = false
                         });
                     }
                 }
             }
 
-            
+
 
             // 5. Salva tudo
             await _teamRepo.UpdateAsync(team);

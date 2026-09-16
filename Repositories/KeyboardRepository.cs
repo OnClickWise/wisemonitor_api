@@ -27,37 +27,61 @@ namespace WiseMonitor.Api.Repositories
         public async Task<KeyboardSession> GetByIdAsync(Guid id, Guid userId)
         {
             return await _context.KeyboardSessions
+                .Include(x => x.Words)
                 .FirstOrDefaultAsync(x => x.Id == id && x.UserId == userId);
         }
 
         public async Task<IEnumerable<KeyboardSession>> GetHistoryAsync(
             Guid userId, DateTime start, DateTime end)
         {
+            start = DateTime.SpecifyKind(start, DateTimeKind.Utc);
+            end = DateTime.SpecifyKind(end, DateTimeKind.Utc);
+
             return await _context.KeyboardSessions
+                .Include(x => x.Words)
                 .Where(x =>
                     x.UserId == userId &&
                     x.StartAt >= start &&
                     x.EndAt <= end)
+                .OrderByDescending(x => x.StartAt)
                 .ToListAsync();
         }
 
         public async Task<KeyboardSummaryDTO> GetSummaryAsync(
             Guid userId, DateTime start, DateTime end)
         {
-            return await _context.KeyboardSessions
+            start = DateTime.SpecifyKind(start, DateTimeKind.Utc);
+            end = DateTime.SpecifyKind(end, DateTimeKind.Utc);
+
+            var grouped = await _context.KeyboardSessions
                 .Where(x =>
                     x.UserId == userId &&
                     x.StartAt >= start &&
                     x.EndAt <= end)
                 .GroupBy(_ => 1)
-                .Select(g => new KeyboardSummaryDTO
+                .Select(g => new
                 {
                     TotalKeystrokes = g.Sum(x => x.TotalKeystrokes),
                     TotalWords = g.Sum(x => x.WordsCount),
-                    ProductivityScore = (int)g.Average(x => x.ProductivityScore),
-                    Classification = KeyboardClassification.Produtivo
+                    AverageScore = g.Average(x => x.ProductivityScore)
                 })
                 .FirstOrDefaultAsync();
+
+            if (grouped == null)
+                return null;
+
+            var classification =
+                grouped.AverageScore >= 70 ? KeyboardClassification.Produtivo :
+                grouped.AverageScore >= 40 ? KeyboardClassification.Neutro :
+                                              KeyboardClassification.Improdutivo;
+
+            return new KeyboardSummaryDTO
+            {
+                TotalKeystrokes = grouped.TotalKeystrokes,
+                TotalWords = grouped.TotalWords,
+                ProductivityScore = (int)grouped.AverageScore,
+                Classification = classification
+            };
         }
 
         public async Task UpdateAsync(KeyboardSession session)

@@ -11,5 +11,8 @@ namespace WiseMonitor.Api.DTOs
         public string Department { get; set; } = string.Empty;
         public string IpAddress { get; set; } = string.Empty;
         public bool IsOnline { get; set; }
+
+        // Correção manual de qual usuário está sendo monitorado nesta máquina.
+        public Guid? UserId { get; set; }
     }
 }

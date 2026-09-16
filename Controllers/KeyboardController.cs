@@ -1,7 +1,10 @@
 using System;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using WiseMonitor.Api.Authorization;
 using WiseMonitor.Api.DTOs;
+using WiseMonitor.Api.Models.Enums;
 using WiseMonitor.Api.Services;
 using WiseMonitor.Api.Extensions;
 
@@ -9,6 +12,7 @@ namespace WiseMonitor.Api.Controllers
 {
     [ApiController]
     [Route("api/keyboard")]
+    [Authorize]
     public class KeyboardController : ControllerBase
     {
         private readonly IKeyboardService _service;
@@ -36,6 +40,7 @@ namespace WiseMonitor.Api.Controllers
 
         // READ BY ID
         [HttpGet("{id:guid}")]
+        [HasPermission(Permissions.ActivityView)]
         public async Task<IActionResult> GetById(Guid id)
         {
             var userId = User.GetUserId();
@@ -49,6 +54,7 @@ namespace WiseMonitor.Api.Controllers
 
         // READ HISTORY
         [HttpGet("history")]
+        [HasPermission(Permissions.ActivityView)]
         public async Task<IActionResult> GetHistory(
             [FromQuery] DateTime start,
             [FromQuery] DateTime end)
@@ -61,12 +67,26 @@ namespace WiseMonitor.Api.Controllers
 
         // SUMMARY
         [HttpGet("summary")]
+        [HasPermission(Permissions.ActivityView)]
         public async Task<IActionResult> Summary(
             [FromQuery] DateTime start,
             [FromQuery] DateTime end)
         {
             var userId = User.GetUserId();
             var result = await _service.GetSummaryAsync(userId, start, end);
+
+            return Ok(result);
+        }
+
+        // READ HISTORY DE OUTRO USUÁRIO (visão do admin/gestor sobre um colaborador)
+        [HttpGet("user/{userId:guid}")]
+        [HasPermission(Permissions.ActivityView)]
+        public async Task<IActionResult> GetHistoryByUser(
+            Guid userId,
+            [FromQuery] DateTime start,
+            [FromQuery] DateTime? end)
+        {
+            var result = await _service.GetHistoryAsync(userId, start, end ?? DateTime.UtcNow);
 
             return Ok(result);
         }

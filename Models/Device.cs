@@ -35,5 +35,10 @@ namespace WiseMonitor.Api.Models
         // Multi-tenant
         [Required]
         public Guid OrganizationId { get; set; }
+
+        // Correção manual de qual usuário está sendo monitorado nesta máquina
+        // (ex.: agent configurado com a pessoa errada). Tem prioridade sobre o
+        // usuário detectado automaticamente pela última screenshot recebida.
+        public Guid? UserId { get; set; }
     }
 }

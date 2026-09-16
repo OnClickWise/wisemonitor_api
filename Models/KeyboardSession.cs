@@ -23,6 +23,10 @@ namespace WiseMonitor.Api.Models
         public int ProductivityScore { get; set; }
         public KeyboardClassification Classification { get; set; }
 
+        public int BackspaceCount { get; set; }
+        public double WordsPerMinute { get; set; }
+        public double CorrectionRate { get; set; }
+
         public ICollection<KeyboardWord> Words { get; set; } = new List<KeyboardWord>();
     }
 }

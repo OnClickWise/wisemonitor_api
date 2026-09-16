@@ -10,6 +10,8 @@ namespace WiseMonitor.Api.Models
         public Guid UserId { get; set; }
         public User User { get; set; } = null!;
 
+        public bool IsManager { get; set; } = false;
+
         public DateTime JoinedAt { get; set; } = DateTime.UtcNow;
     }
 }

@@ -122,3 +122,50 @@ Este é o mesmo canal reaproveitado por `VideoSegmentService` para notificar
 - **Live (WebRTC signaling)**: `docs/features/live-webrtc-signaling.md` —
   mecanismo **totalmente separado** (`/ws/live`, `LiveStreamHub`), não
   compartilha estado com `LiveMonitoringService`.
+
+## 7. `/ws/agent-stream` — tela ao vivo em tempo real (adicional, não substitui vídeo por segmentos)
+
+Terceiro canal, adicionado **ao lado** do histórico de vídeo por segmentos
+(`docs/video-streaming-flow.md`) — este é só para "assistir agora", sem
+gravação/retenção nenhuma. Arquivos:
+`Middlewares/AgentStreamWebSocketMiddleware.cs`, `Services/LiveFrameRelay.cs`.
+
+- O **agent** (não o dashboard) conecta em `/ws/agent-stream?deviceId=...`
+  com o mesmo esquema de auth de `/ws/monitor` (JWT via `?token=` ou header),
+  e mantém a conexão aberta empurrando frames **JPEG binários**.
+- `LiveFrameRelay.RelayFrameAsync` repassa cada frame só para os sockets de
+  admin que estão com aquele device "aberto" agora
+  (`ILiveMonitoringService.GetWatcherSockets`), envelopado como
+  `[4 bytes big-endian = tamanho do cabeçalho][cabeçalho JSON {deviceId,ts}][JPEG]`
+  — o prefixo permite que um único socket de admin (tela de grade com vários
+  devices) receba frames de todos e saiba de qual device cada um veio.
+  Backpressure não-bloqueante: se o envio anterior para um espectador ainda
+  não terminou, o frame novo é descartado (`SemaphoreSlim.WaitAsync(0)`) em
+  vez de enfileirado — melhor perder um quadro do que atrasar todo mundo.
+- O agent não faz mais polling HTTP perguntando "alguém está me vendo?": o
+  relay assina `ILiveMonitoringService.WatchStateChanged` (disparado pelo
+  `AddWatcher`/`RemoveWatcher` de `/ws/monitor` só na transição 0→1/1→0) e
+  empurra `{"type":"watch-start"}`/`{"type":"watch-stop"}` de volta pelo
+  próprio socket do agent — inclusive imediatamente ao reconectar, se o
+  device já estava sendo assistido (`RegisterAgent`), para não ficar parado
+  esperando um evento que já passou.
+- `LiveFrameRelay` é resolvido (`GetRequiredService`) uma vez no startup do
+  `Program.cs`, antes do app começar a aceitar requisições — precisa estar
+  inscrito em `WatchStateChanged` antes da primeira conexão, senão perderia o
+  primeiro `watch-start`.
+- Endpoints legados equivalentes (`LiveMonitoringController`: `GET
+  devices/{id}/watched`, `POST frame`, polling + multipart) continuam
+  existindo no código mas não são chamados por nenhum cliente atual — foram
+  deliberadamente deixados como estão nesta adição, não removidos.
+
+## 8. Presença real (online/offline)
+
+Ver `docs/features/devices.md`, seção "Presença" — `POST /api/Devices/
+heartbeat`/`offline` e o `DevicePresenceSweeper` (BackgroundService) mantêm
+tanto o banco (`Device.IsOnline`) quanto este cache em memória
+(`ILiveMonitoringService.MarkDeviceOffline`/`BroadcastExpiredDevices`) em
+sincronia. `GetLiveDevice`/`GetAllLiveDevices`/`BroadcastFrameAsync` sempre
+aplicam a TTL de 90s (`LiveMonitoringService.PresenceTtl`) na leitura
+(`WithFreshnessApplied`) mesmo antes do sweeper rodar — o cache nunca muta em
+lugar, então um device "stale" volta a `online` automaticamente assim que um
+sinal novo chega, sem ficar preso em offline.

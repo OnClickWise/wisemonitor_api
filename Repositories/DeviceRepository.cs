@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using WiseMonitor.Api.Data;
 using WiseMonitor.Api.Models;
@@ -28,6 +30,30 @@ namespace WiseMonitor.Api.Repositories
         {
             return await _context.Devices
                 .FirstOrDefaultAsync(d => d.Id == id && d.OrganizationId == orgId);
+        }
+
+        public async Task<Device?> GetByHostnameAsync(string hostname, Guid orgId)
+        {
+            if (string.IsNullOrWhiteSpace(hostname))
+                return null;
+
+            // Hostname do Windows é case-insensitive; comparar sem normalizar
+            // criaria um device novo só porque o caso mudou.
+            return await _context.Devices
+                .FirstOrDefaultAsync(d =>
+                    d.OrganizationId == orgId &&
+                    d.Hostname.ToLower() == hostname.ToLower());
+        }
+
+        public async Task<int> MarkStaleOfflineAsync(DateTime threshold, CancellationToken ct = default)
+        {
+            return await _context.Devices
+                .Where(d => d.IsOnline && d.LastSeen < threshold)
+                .ExecuteUpdateAsync(
+                    s => s
+                        .SetProperty(d => d.IsOnline, false)
+                        .SetProperty(d => d.UpdatedAt, DateTime.UtcNow),
+                    ct);
         }
 
         public async Task<IEnumerable<Device>> GetAllAsync(Guid orgId)

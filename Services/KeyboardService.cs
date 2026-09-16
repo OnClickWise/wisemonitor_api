@@ -22,7 +22,10 @@ namespace WiseMonitor.Api.Services
             Guid userId,
             Guid organizationId)
         {
+            var metrics = dto.Metrics ?? new KeyboardMetricsDTO();
             var result = KeyboardProductivityHelper.Calculate(dto);
+            var durationMinutes = (dto.EndAt - dto.StartAt).TotalMinutes;
+            var quality = KeyboardProductivityHelper.CalculateQuality(dto, durationMinutes);
 
             var session = new KeyboardSession
             {
@@ -32,14 +35,36 @@ namespace WiseMonitor.Api.Services
                 StartAt = dto.StartAt,
                 EndAt = dto.EndAt,
                 Application = dto.Application,
-                TotalKeystrokes = dto.Metrics.TotalKeystrokes,
-                LettersCount = dto.Metrics.Letters,
-                WordsCount = dto.Metrics.Words,
-                NumbersCount = dto.Metrics.Numbers,
-                SymbolsCount = dto.Metrics.Symbols,
+                TotalKeystrokes = metrics.TotalKeystrokes,
+                LettersCount = metrics.Letters,
+                WordsCount = metrics.Words,
+                NumbersCount = metrics.Numbers,
+                SymbolsCount = metrics.Symbols,
                 ProductivityScore = result.Score,
-                Classification = result.Classification
+                Classification = result.Classification,
+                BackspaceCount = metrics.BackspaceCount,
+                WordsPerMinute = quality.WordsPerMinute,
+                CorrectionRate = quality.CorrectionRate
             };
+
+            foreach (var word in dto.Words)
+            {
+                if (string.IsNullOrWhiteSpace(word.Word))
+                    continue;
+
+                session.Words.Add(new KeyboardWord
+                {
+                    Id = Guid.NewGuid(),
+                    KeyboardSessionId = session.Id,
+                    Word = word.Word,
+                    Count = word.Count,
+                    // TODO: no per-word productivity classifier exists yet (neither backend nor
+                    // desktop sends per-word categorization). Defaulting to Neutra rather than
+                    // Produtiva (enum ordinal 0) so unclassified words don't silently inflate
+                    // productivity stats.
+                    Category = KeyboardWordCategory.Neutra
+                });
+            }
 
             await _repository.CreateAsync(session);
         }

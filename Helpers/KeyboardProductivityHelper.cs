@@ -12,10 +12,12 @@ namespace WiseMonitor.Api.Helpers
         public static (int Score, KeyboardClassification Classification) Calculate(
             KeyboardEventCreateDTO dto)
         {
+            var metrics = dto.Metrics ?? new KeyboardMetricsDTO();
+
             var score =
-                (dto.Metrics.Words * 2) +
-                (dto.Metrics.Letters * 0.1) -
-                (dto.Metrics.Symbols * 0.5);
+                (metrics.Words * 2) +
+                (metrics.Letters * 0.1) -
+                (metrics.Symbols * 0.5);
 
             var classification =
                 score >= 70 ? KeyboardClassification.Produtivo :
@@ -23,6 +25,19 @@ namespace WiseMonitor.Api.Helpers
                               KeyboardClassification.Improdutivo;
 
             return ((int)score, classification);
+        }
+
+        public static (double WordsPerMinute, double CorrectionRate) CalculateQuality(
+            KeyboardEventCreateDTO dto, double durationMinutes)
+        {
+            var metrics = dto.Metrics ?? new KeyboardMetricsDTO();
+
+            var wpm = durationMinutes > 0 ? metrics.Words / durationMinutes : 0;
+            var correctionRate = metrics.TotalKeystrokes > 0
+                ? (double)metrics.BackspaceCount / metrics.TotalKeystrokes
+                : 0;
+
+            return (Math.Round(wpm, 2), Math.Round(correctionRate, 4));
         }
     }
 }

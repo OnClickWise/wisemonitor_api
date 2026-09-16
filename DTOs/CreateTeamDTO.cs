@@ -11,6 +11,9 @@ namespace WiseMonitor.Api.DTOs.Team
         // UserId de Admin ou Manager
         public Guid ManagerId { get; set; }
 
+        // Administradores adicionais da equipe (além do ManagerId principal)
+        public List<Guid> ManagerIds { get; set; } = new();
+
         // UserIds da mesma organização
         public List<Guid> MemberIds { get; set; } = new();
 

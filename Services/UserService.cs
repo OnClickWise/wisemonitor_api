@@ -6,16 +6,20 @@ using Microsoft.EntityFrameworkCore;
 using WiseMonitor.Api.Data;
 using WiseMonitor.Api.DTOs;
 using WiseMonitor.Api.Models;
+using WiseMonitor.Api.Models.Enums;
+using WiseMonitor.Api.Repositories;
 
 namespace WiseMonitor.Api.Services
 {
     public class UserService : IUserService
     {
         private readonly AppDbContext _context;
+        private readonly ITeamRepository _teamRepo;
 
-        public UserService(AppDbContext context)
+        public UserService(AppDbContext context, ITeamRepository teamRepo)
         {
             _context = context;
+            _teamRepo = teamRepo;
         }
 
         public async Task<UserDTO> CreateUserAsync(UserCreateDTO dto, Guid organizationId)
@@ -56,12 +60,21 @@ namespace WiseMonitor.Api.Services
             return true;
         }
 
-        public async Task<IEnumerable<UserDTO>> GetAllUsersAsync(Guid organizationId)
+        public async Task<IEnumerable<UserDTO>> GetAllUsersAsync(Guid organizationId, Guid callerId, string callerRole)
         {
-            var users = await _context.Users
+            var query = _context.Users
                 .AsNoTracking()
-                .Where(u => u.OrganizationId == organizationId)
-                .ToListAsync();
+                .Where(u => u.OrganizationId == organizationId);
+
+            // Supervisor só pode ver os usuários das equipes que ele administra —
+            // sem isso ele enxergava todo mundo da organização, igual TenantAdmin.
+            if (UserRoles.Normalize(callerRole) == UserRoles.Supervisor)
+            {
+                var memberIds = await _teamRepo.GetManagedMemberIdsAsync(callerId, organizationId);
+                query = query.Where(u => memberIds.Contains(u.Id));
+            }
+
+            var users = await query.ToListAsync();
 
             return users.Select(MapToDTO);
         }

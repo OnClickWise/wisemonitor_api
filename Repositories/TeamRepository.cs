@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using System.Linq;
 using WiseMonitor.Api.Data;
 using WiseMonitor.Api.Models;
 
@@ -38,6 +39,31 @@ namespace WiseMonitor.Api.Repositories
                     .ThenInclude(m => m.User)
                 .Where(t => t.OrganizationId == organizationId)
                 .ToListAsync();
+        }
+
+        public async Task<Team?> GetByUserIdAsync(Guid userId, Guid organizationId)
+        {
+            return await _context.Teams
+                .Include(t => t.Members)
+                .FirstOrDefaultAsync(t =>
+                    t.OrganizationId == organizationId &&
+                    t.Members.Any(m => m.UserId == userId));
+        }
+
+        public async Task<List<Guid>> GetManagedMemberIdsAsync(Guid managerUserId, Guid organizationId)
+        {
+            var teams = await _context.Teams
+                .Include(t => t.Members)
+                .Where(t =>
+                    t.OrganizationId == organizationId &&
+                    (t.ManagerId == managerUserId ||
+                     t.Members.Any(m => m.UserId == managerUserId && m.IsManager)))
+                .ToListAsync();
+
+            return teams
+                .SelectMany(t => t.Members.Select(m => m.UserId))
+                .Distinct()
+                .ToList();
         }
 
         public async Task UpdateAsync(Team team)

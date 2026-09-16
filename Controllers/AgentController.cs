@@ -119,6 +119,20 @@ namespace WiseMonitor.Api.Controllers
         public IActionResult Version()
         {
             var result = _agentService.GetVersion();
+
+            // GetVersion() monta a URL a partir de BaseDownloadUrl (config estática) —
+            // mesma correção do endpoint /installer: sem DirectDownloadUrl configurada,
+            // usa o host real da requisição em vez de confiar num valor fixo que pode
+            // estar apontando para localhost/um ambiente errado.
+            if (string.IsNullOrWhiteSpace(_settings.DirectDownloadUrl))
+            {
+                var scheme = Request.Host.Host.Contains("localhost")
+                    ? Request.Scheme
+                    : "https";
+
+                result.DownloadUrl = $"{scheme}://{Request.Host}/api/agent/installer";
+            }
+
             return Ok(result);
         }
     }

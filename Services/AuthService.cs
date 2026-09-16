@@ -23,6 +23,7 @@ namespace WiseMonitor.Api.Services
         private readonly IJwtService _jwtService;
         private readonly ILiveSessionService _liveSessionService;
         private readonly IEmailService _emailService;
+        private readonly IRefreshTokenService _refreshTokenService;
         private readonly ILogger<AuthService> _logger;
 
         public AuthService(
@@ -31,6 +32,7 @@ namespace WiseMonitor.Api.Services
             IJwtService jwtService,
             ILiveSessionService liveSessionService,
             IEmailService emailService,
+            IRefreshTokenService refreshTokenService,
             ILogger<AuthService> logger)
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
@@ -38,6 +40,7 @@ namespace WiseMonitor.Api.Services
             _jwtService = jwtService ?? throw new ArgumentNullException(nameof(jwtService));
             _liveSessionService = liveSessionService ?? throw new ArgumentNullException(nameof(liveSessionService));
             _emailService = emailService ?? throw new ArgumentNullException(nameof(emailService));
+            _refreshTokenService = refreshTokenService ?? throw new ArgumentNullException(nameof(refreshTokenService));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
 
@@ -138,9 +141,52 @@ namespace WiseMonitor.Api.Services
 
             var token = _jwtService.GenerateToken(user);
 
+            // Token opaco de vida longa: é o que deixa o agent desktop renovar o
+            // access token sozinho depois que ele expira, sem pedir login de novo.
+            var refreshToken = await _refreshTokenService.IssueAsync(user.Id);
+
             return new AuthLoginResultDTO
             {
                 Token = token,
+                RefreshToken = refreshToken,
+                ExpiresIn = 3600,
+                SessionId = sessionId,
+                OrganizationId = user.OrganizationId,
+                User = new AuthLoginUserDTO
+                {
+                    Id = user.Id,
+                    FirstName = user.FirstName,
+                    LastName = user.LastName,
+                    Email = user.Email,
+                    Role = user.Role
+                }
+            };
+        }
+
+        // ====================
+        // REFRESH (renova o access token sem senha)
+        // ====================
+        public async Task<AuthLoginResultDTO> RefreshAsync(string refreshToken)
+        {
+            if (string.IsNullOrWhiteSpace(refreshToken))
+                throw new UnauthorizedAccessException("refreshToken é obrigatório.");
+
+            var result = await _refreshTokenService.RedeemAsync(refreshToken);
+            if (result == null)
+                throw new UnauthorizedAccessException("Refresh token inválido, expirado ou já usado.");
+
+            var (user, newRefreshToken) = result.Value;
+
+            var sessionId = user.OrganizationId.HasValue
+                ? await _liveSessionService.GetOrCreateSessionForOrganizationAsync(user.OrganizationId.Value)
+                : Guid.NewGuid().ToString();
+
+            var token = _jwtService.GenerateToken(user);
+
+            return new AuthLoginResultDTO
+            {
+                Token = token,
+                RefreshToken = newRefreshToken,
                 ExpiresIn = 3600,
                 SessionId = sessionId,
                 OrganizationId = user.OrganizationId,

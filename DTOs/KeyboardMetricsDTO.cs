@@ -12,5 +12,6 @@ namespace WiseMonitor.Api.DTOs
         public int Words { get; set; }
         public int Numbers { get; set; }
         public int Symbols { get; set; }
+        public int BackspaceCount { get; set; }
     }
 }

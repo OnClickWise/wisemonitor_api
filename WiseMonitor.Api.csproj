@@ -77,6 +77,9 @@
     <!-- SWAGGER -->
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.4.0" />
 
+    <!-- REPORTS (geração de PDF via Chromium headless) -->
+    <PackageReference Include="PuppeteerSharp" Version="25.4.0" />
+
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.6" />
 
   </ItemGroup>
@@ -100,6 +103,11 @@
 
     <None Update="html\PasswordReset.html">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+
+    <None Update="html\Reports\ProductivityReport.html">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </None>
 
   </ItemGroup>

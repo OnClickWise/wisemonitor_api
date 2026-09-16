@@ -15,6 +15,9 @@ namespace WiseMonitor.Api.DTOs.Team
         [Required]
         public Guid? ManagerId { get; set; }
 
+        // Administradores adicionais da equipe (além do ManagerId principal)
+        public List<Guid> ManagerIds { get; set; } = new();
+
         public List<Guid> MemberIds { get; set; } = new();
 
         public Guid? WorkScheduleId { get; set; }

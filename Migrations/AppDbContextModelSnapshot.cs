@@ -248,6 +248,37 @@ namespace WiseMonitor.Api.Migrations
                     b.ToTable("AppFocusEvents");
                 });
 
+            modelBuilder.Entity("WiseMonitor.Api.Models.ApplicationDisplayName", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ApplicationName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId", "ApplicationName")
+                        .IsUnique();
+
+                    b.ToTable("ApplicationDisplayNames", (string)null);
+                });
+
             modelBuilder.Entity("WiseMonitor.Api.Models.AuditLog", b =>
                 {
                     b.Property<Guid>("Id")
@@ -472,6 +503,9 @@ namespace WiseMonitor.Api.Migrations
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid");
+
                     b.HasKey("Id");
 
                     b.ToTable("Devices", (string)null);
@@ -487,8 +521,14 @@ namespace WiseMonitor.Api.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<int>("BackspaceCount")
+                        .HasColumnType("integer");
+
                     b.Property<int>("Classification")
                         .HasColumnType("integer");
+
+                    b.Property<double>("CorrectionRate")
+                        .HasColumnType("double precision");
 
                     b.Property<DateTime>("EndAt")
                         .HasColumnType("timestamp with time zone");
@@ -519,6 +559,9 @@ namespace WiseMonitor.Api.Migrations
 
                     b.Property<int>("WordsCount")
                         .HasColumnType("integer");
+
+                    b.Property<double>("WordsPerMinute")
+                        .HasColumnType("double precision");
 
                     b.HasKey("Id");
 
@@ -577,6 +620,48 @@ namespace WiseMonitor.Api.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("LiveSessions", (string)null);
+                });
+
+            modelBuilder.Entity("WiseMonitor.Api.Models.MouseSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Application")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime>("EndAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("LeftClicks")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("MiddleClicks")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("RightClicks")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ScrollCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("StartAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("OrganizationId", "UserId", "StartAt");
+
+                    b.ToTable("MouseSessions", (string)null);
                 });
 
             modelBuilder.Entity("WiseMonitor.Api.Models.Organization", b =>
@@ -691,6 +776,158 @@ namespace WiseMonitor.Api.Migrations
                     b.HasIndex("AdminUserId");
 
                     b.ToTable("Organizations", (string)null);
+                });
+
+            modelBuilder.Entity("WiseMonitor.Api.Models.OrganizationAppearanceSettings", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ButtonBackgroundColor")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("ButtonForegroundColor")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("ButtonHoverBackgroundColor")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("CardBackgroundColor")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("CardBackgroundType")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("CardGradientDirection")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<string>("CardGradientEnd")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("CardGradientStart")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("CardPrimaryTextColor")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("CardSecondaryTextColor")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("ChartBackgroundType")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("ChartColor")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("ChartGradientDirection")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<string>("ChartGradientEnd")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("ChartGradientStart")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("PageBackgroundColor")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("PageBackgroundType")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("PageGradientDirection")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<string>("PageGradientEnd")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("PageGradientStart")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("SidebarActiveBackground")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("SidebarActiveForeground")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("SidebarBackgroundType")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("SidebarColor")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("SidebarForegroundColor")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("SidebarGradientDirection")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<string>("SidebarGradientEnd")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("SidebarGradientStart")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("SidebarHoverBackground")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("SidebarHoverForeground")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("SidebarProfileBackground")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Theme")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId", "Theme")
+                        .IsUnique();
+
+                    b.ToTable("OrganizationAppearanceSettings", (string)null);
                 });
 
             modelBuilder.Entity("WiseMonitor.Api.Models.PasswordResetToken", b =>
@@ -845,6 +1082,83 @@ namespace WiseMonitor.Api.Migrations
                     b.ToTable("PlatformSettings", (string)null);
                 });
 
+            modelBuilder.Entity("WiseMonitor.Api.Models.ProductivityClassification", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Category")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Identifier")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("ItemType")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TeamId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TeamId");
+
+                    b.HasIndex("OrganizationId", "TeamId", "Identifier", "ItemType")
+                        .IsUnique();
+
+                    b.ToTable("ProductivityClassifications", (string)null);
+                });
+
+            modelBuilder.Entity("WiseMonitor.Api.Models.RefreshToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ReplacedByTokenHash")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("RefreshTokens", (string)null);
+                });
+
             modelBuilder.Entity("WiseMonitor.Api.Models.Screenshot", b =>
                 {
                     b.Property<Guid>("Id")
@@ -940,6 +1254,9 @@ namespace WiseMonitor.Api.Migrations
 
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid");
+
+                    b.Property<bool>("IsManager")
+                        .HasColumnType("boolean");
 
                     b.Property<DateTime>("JoinedAt")
                         .HasColumnType("timestamp with time zone");
@@ -1272,6 +1589,21 @@ namespace WiseMonitor.Api.Migrations
                     b.Navigation("KeyboardSession");
                 });
 
+            modelBuilder.Entity("WiseMonitor.Api.Models.MouseSession", b =>
+                {
+                    b.HasOne("WiseMonitor.Api.Models.Organization", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("WiseMonitor.Api.Models.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("WiseMonitor.Api.Models.Organization", b =>
                 {
                     b.HasOne("WiseMonitor.Api.Models.User", "AdminUser")
@@ -1280,6 +1612,37 @@ namespace WiseMonitor.Api.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("AdminUser");
+                });
+
+            modelBuilder.Entity("WiseMonitor.Api.Models.OrganizationAppearanceSettings", b =>
+                {
+                    b.HasOne("WiseMonitor.Api.Models.Organization", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Organization");
+                });
+
+            modelBuilder.Entity("WiseMonitor.Api.Models.ProductivityClassification", b =>
+                {
+                    b.HasOne("WiseMonitor.Api.Models.Team", "Team")
+                        .WithMany()
+                        .HasForeignKey("TeamId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Team");
+                });
+
+            modelBuilder.Entity("WiseMonitor.Api.Models.RefreshToken", b =>
+                {
+                    b.HasOne("WiseMonitor.Api.Models.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("WiseMonitor.Api.Models.Team", b =>

@@ -186,7 +186,7 @@ public class AppFocusService : IAppFocusService
             await _deviceRepository.UpdateAsync(device);
         }
 
-        var category = await _classificationService.ClassifyAsync(dto.ApplicationName);
+        var category = await _classificationService.ClassifyAsync(dto.ApplicationName, dto.Url, userId, organizationId);
         var duration = AppFocusDurationHelper.CalculateDuration(dto.StartTime, dto.EndTime);
 
         if (duration <= 0)
@@ -241,7 +241,7 @@ public class AppFocusService : IAppFocusService
         entity.StartTime = dto.StartTime;
         entity.EndTime = dto.EndTime;
         entity.DurationSeconds = duration;
-        entity.Category = await _classificationService.ClassifyAsync(dto.ApplicationName);
+        entity.Category = await _classificationService.ClassifyAsync(dto.ApplicationName, dto.Url, entity.UserId, organizationId);
 
         await _repository.UpdateAsync(entity);
 

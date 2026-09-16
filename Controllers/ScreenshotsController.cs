@@ -16,15 +16,18 @@ namespace WiseMonitor.Api.Controllers
     {
         private readonly IScreenshotService _screenshotService;
         private readonly ILiveMonitoringService _liveService;
+        private readonly IDeviceService _deviceService;
         private readonly ILogger<ScreenshotsController> _logger;
 
         public ScreenshotsController(
             IScreenshotService screenshotService,
             ILiveMonitoringService liveService,
+            IDeviceService deviceService,
             ILogger<ScreenshotsController> logger)
         {
             _screenshotService = screenshotService;
             _liveService = liveService;
+            _deviceService = deviceService;
             _logger = logger;
         }
 
@@ -60,6 +63,17 @@ namespace WiseMonitor.Api.Controllers
 
                 var result = await _screenshotService.SaveScreenshotAsync(dto);
 
+                // Correção manual de um admin (Device.UserId) tem prioridade sobre quem
+                // o próprio agent diz estar monitorando — é exatamente pra cobrir o caso
+                // de alguém ter configurado o agent com a pessoa errada na máquina.
+                Guid? manuallyAssignedUserId = null;
+                if (Guid.TryParse(dto.DeviceId, out var deviceGuid))
+                {
+                    var device = await _deviceService.GetDeviceByIdAsync(deviceGuid, dto.OrganizationId);
+                    manuallyAssignedUserId = device?.UserId;
+                }
+                var effectiveUserId = manuallyAssignedUserId ?? dto.MonitoredUserId;
+
                 // Update live monitoring so the dashboard reflects this device immediately
                 var proto = Request.Headers["X-Forwarded-Proto"].FirstOrDefault() ?? Request.Scheme;
                 var baseUrl = $"{proto}://{Request.Host}";
@@ -67,7 +81,8 @@ namespace WiseMonitor.Api.Controllers
                 {
                     DeviceId    = dto.DeviceId,
                     OrgId       = dto.OrganizationId.ToString(),
-                    Username    = dto.MonitoredUserId.ToString(),
+                    UserId      = effectiveUserId.ToString(),
+                    Username    = effectiveUserId.ToString(),
                     Department  = "—",
                     Status      = "online",
                     ThumbnailUrl  = $"{baseUrl}{result.ScreenshotUrl}",

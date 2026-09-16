@@ -64,4 +64,41 @@ public class TenantIsolationTests
 
         Assert.Equal(2, visibleDevices.Count);
     }
+
+    [Fact]
+    public async Task MouseSessions_UserFromOrgB_CannotSeeSessionFromOrgA()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var orgA = Guid.NewGuid();
+        var orgB = Guid.NewGuid();
+
+        using (var seedDb = CreateDb(dbName, new FakeTenantContext { IsActive = false }))
+        {
+            seedDb.MouseSessions.Add(new MouseSession
+            {
+                Id = Guid.NewGuid(),
+                UserId = Guid.NewGuid(),
+                OrganizationId = orgA,
+                Application = "org-a-app.exe",
+                StartAt = DateTime.UtcNow,
+                EndAt = DateTime.UtcNow.AddMinutes(1)
+            });
+            seedDb.MouseSessions.Add(new MouseSession
+            {
+                Id = Guid.NewGuid(),
+                UserId = Guid.NewGuid(),
+                OrganizationId = orgB,
+                Application = "org-b-app.exe",
+                StartAt = DateTime.UtcNow,
+                EndAt = DateTime.UtcNow.AddMinutes(1)
+            });
+            await seedDb.SaveChangesAsync();
+        }
+
+        using var dbAsOrgB = CreateDb(dbName, new FakeTenantContext { OrganizationId = orgB, IsActive = true });
+        var visibleSessions = await dbAsOrgB.MouseSessions.ToListAsync();
+
+        Assert.Single(visibleSessions);
+        Assert.Equal("org-b-app.exe", visibleSessions[0].Application);
+    }
 }

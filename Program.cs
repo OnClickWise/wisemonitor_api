@@ -15,6 +15,7 @@ using WiseMonitor.Api.Data;
 using WiseMonitor.Api.Models.Enums;
 using WiseMonitor.Api.Repositories;
 using WiseMonitor.Api.Services;
+using WiseMonitor.Api.Services.Reports;
 using WiseMonitor.Api.Middlewares;
 using WiseMonitor.Api.Helpers;
 using WiseMonitor.Api.Extensions;
@@ -148,20 +149,29 @@ builder.Services.AddRateLimiter(options =>
 // =======================
 builder.Services.AddSingleton<LiveMonitoringService>();
 builder.Services.AddSingleton<ILiveMonitoringService>(sp => sp.GetRequiredService<LiveMonitoringService>());
+builder.Services.AddSingleton<LiveFrameRelay>();
+builder.Services.AddHostedService<DevicePresenceSweeper>();
 
 builder.Services.AddScoped<IAuthService,                AuthService>();
 builder.Services.AddScoped<IEmailService,               EmailService>();
 builder.Services.AddScoped<IJwtService,                 JwtService>();
+builder.Services.AddScoped<IRefreshTokenService,        RefreshTokenService>();
 builder.Services.AddScoped<IUserService,                UserService>();
 builder.Services.AddScoped<IOrganizationService,        OrganizationService>();
 builder.Services.AddScoped<IDeviceService,              DeviceService>();
 builder.Services.AddScoped<IScreenshotService,          ScreenshotService>();
 builder.Services.AddScoped<IVideoSegmentService,        VideoSegmentService>();
 builder.Services.AddScoped<IAppFocusService,            AppFocusService>();
+builder.Services.AddScoped<IReportDataService,          ReportDataService>();
+builder.Services.AddScoped<IReportPdfService,           ReportPdfService>();
+builder.Services.AddScoped<IReportCsvService,           ReportCsvService>();
 builder.Services.AddScoped<IActivityClassificationService, ActivityClassificationService>();
 builder.Services.AddScoped<IWorkScheduleService,        WorkScheduleService>();
 builder.Services.AddScoped<ITeamService,                TeamService>();
 builder.Services.AddScoped<IKeyboardService,            KeyboardService>();
+builder.Services.AddScoped<IMouseService,               MouseService>();
+builder.Services.AddScoped<IApplicationDisplayNameService, ApplicationDisplayNameService>();
+builder.Services.AddScoped<IProductivityClassificationService, ProductivityClassificationService>();
 builder.Services.AddScoped<ILiveSessionService,         LiveSessionService>();
 
 // Novos serviços
@@ -194,6 +204,9 @@ builder.Services.AddScoped<IWorkScheduleRepository, WorkScheduleRepository>();
 builder.Services.AddScoped<IAppFocusRepository,     AppFocusRepository>();
 builder.Services.AddScoped<ITeamRepository,         TeamRepository>();
 builder.Services.AddScoped<IKeyboardRepository,     KeyboardRepository>();
+builder.Services.AddScoped<IMouseRepository,        MouseRepository>();
+builder.Services.AddScoped<IApplicationDisplayNameRepository, ApplicationDisplayNameRepository>();
+builder.Services.AddScoped<IProductivityClassificationRepository, ProductivityClassificationRepository>();
 
 // =======================
 // WebRTC
@@ -309,6 +322,11 @@ builder.Services.AddAuthorization(options =>
 
 var app = builder.Build();
 
+// Resolve LiveFrameRelay logo no startup para que ele já esteja inscrito em
+// ILiveMonitoringService.WatchStateChanged antes da primeira conexão de agent —
+// senão um "watch-start" perdido faria o agent nunca começar a transmitir.
+app.Services.GetRequiredService<LiveFrameRelay>();
+
 // =======================
 // PORT CLOUD RUN
 // =======================
@@ -338,6 +356,7 @@ app.UseAuthorization();
 app.UseMiddleware<AuditMiddleware>();
 app.UseMiddleware<DeviceWebSocketMiddleware>();
 app.UseMiddleware<MonitorWebSocketMiddleware>();
+app.UseMiddleware<AgentStreamWebSocketMiddleware>();
 app.UseMiddleware<TenantMiddleware>();
 
 app.UseStaticFiles();

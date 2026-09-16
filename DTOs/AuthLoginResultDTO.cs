@@ -5,6 +5,7 @@ namespace WiseMonitor.Api.DTOs
     public class AuthLoginResultDTO
     {
         public string Token { get; set; } = string.Empty;
+        public string RefreshToken { get; set; } = string.Empty;
         public int ExpiresIn { get; set; }
         public string SessionId { get; set; } = string.Empty;
         public Guid? OrganizationId { get; set; }

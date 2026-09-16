@@ -13,6 +13,9 @@ namespace WiseMonitor.Api.DTOs.Team
         public Guid ManagerId { get; set; }
         public string ManagerName { get; set; } = string.Empty;
 
+        // Todos os administradores da equipe (inclui o ManagerId principal)
+        public List<TeamMemberDTO> Managers { get; set; } = new();
+
         public List<TeamMemberDTO> Members { get; set; } = new();
 
         public Guid? WorkScheduleId { get; set; }

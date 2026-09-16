@@ -9,6 +9,7 @@ namespace WiseMonitor.Api.DTOs
     {
 
         public string DeviceId { get; set; } = "";
+        public string UserId { get; set; } = "";
         public string Username { get; set; } = "";
         public string Department { get; set; } = "";
         public string Status { get; set; } = "offline"; // online/offline

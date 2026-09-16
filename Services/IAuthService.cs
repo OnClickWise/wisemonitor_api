@@ -17,6 +17,9 @@ namespace WiseMonitor.Api.Services
         /// <summary>Autentica por e-mail/senha (sem seleção prévia de organização) e emite o JWT real da aplicação.</summary>
         Task<AuthLoginResultDTO> LoginByEmailAsync(string email, string password);
 
+        /// <summary>Renova o access token a partir de um refresh token válido, rotacionando-o.</summary>
+        Task<AuthLoginResultDTO> RefreshAsync(string refreshToken);
+
         /// <summary>Gera um token de redefinição de senha e envia o e-mail correspondente, se o usuário existir.</summary>
         Task RequestPasswordResetAsync(string email);
 

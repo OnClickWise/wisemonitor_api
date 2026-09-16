@@ -17,6 +17,6 @@ namespace WiseMonitor.Api.DTOs
 
         public KeyboardMetricsDTO? Metrics { get; set; }
 
-        public List<string> Words { get; set; } = new();
+        public List<KeyboardWordItemDTO> Words { get; set; } = new();
     }
 }

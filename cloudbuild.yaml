@@ -24,5 +24,10 @@ steps:
         'europe-west1',
         '--platform',
         'managed',
-        '--allow-unauthenticated'
+        '--allow-unauthenticated',
+        # Um WebSocket conta como uma requisição no Cloud Run. Com o padrão de 300s,
+        # /ws/monitor (painel) e /ws/agent-stream (tela ao vivo) seriam derrubados a
+        # cada 5 minutos e precisariam reconectar.
+        '--timeout',
+        '3600'
       ]

@@ -39,6 +39,28 @@ namespace WiseMonitor.Api.Controllers
         }
 
         // ====================
+        // REFRESH (renova o access token sem senha)
+        // ====================
+        // Anônimo de propósito: o motivo de existir é justamente o access token já
+        // ter expirado. Quem autentica aqui é o refresh token em si.
+        [HttpPost("refresh")]
+        public async Task<IActionResult> Refresh([FromBody] RefreshTokenRequestDTO request)
+        {
+            if (request == null || string.IsNullOrWhiteSpace(request.RefreshToken))
+                return BadRequest(new { message = "refreshToken é obrigatório." });
+
+            try
+            {
+                var result = await _authService.RefreshAsync(request.RefreshToken);
+                return Ok(result);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Unauthorized(new { message = ex.Message });
+            }
+        }
+
+        // ====================
         // ESQUECI MINHA SENHA
         // ====================
         [HttpPost("forgot-password")]

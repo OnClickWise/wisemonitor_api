@@ -52,9 +52,16 @@ namespace WiseMonitor.Api.Controllers
         // 📥 DOWNLOAD/STREAM POR ID (com suporte a Range para o <video> tag)
         // ============================
         [HttpGet("{id:guid}")]
-        [AllowAnonymous] // consistente com ScreenshotsController.GetById — evita exigir header de auth pro <video>/<img>
-        public async Task<IActionResult> GetById(Guid id)
+        [AllowAnonymous] // a tag <video> do navegador não manda header de autenticação
+        public async Task<IActionResult> GetById(Guid id, [FromQuery] long exp, [FromQuery] string? sig)
         {
+            // Sem isso, qualquer pessoa — mesmo sem login — sabendo ou adivinhando o GUID
+            // acessaria o vídeo de outro tenant, já que essa rota não pode exigir o Bearer
+            // normal (ver comentário do AllowAnonymous acima) e o filtro de tenant do EF
+            // não se aplica a requisições anônimas.
+            if (!_videoSegmentService.ValidateAccess(id, exp, sig))
+                return Unauthorized();
+
             var segment = await _videoSegmentService.GetByIdAsync(id);
             if (segment == null)
                 return NotFound();
@@ -96,6 +103,37 @@ namespace WiseMonitor.Api.Controllers
             var history = await _videoSegmentService.GetHistoryWithContextAsync(deviceId, from, to, baseUrl);
 
             return Ok(history);
+        }
+
+        // ============================
+        // 🎬 VÍDEO COMPLETO DE UMA ATIVIDADE (concatena os segmentos via ffmpeg)
+        // ============================
+        [HttpGet("activity-video")]
+        public async Task<IActionResult> GetActivityVideo(
+            [FromQuery] string deviceId,
+            [FromQuery] DateTime from,
+            [FromQuery] DateTime to)
+        {
+            if (string.IsNullOrWhiteSpace(deviceId))
+                return BadRequest(new { message = "deviceId é obrigatório." });
+
+            if (to <= from)
+                return BadRequest(new { message = "'to' deve ser posterior a 'from'." });
+
+            try
+            {
+                var result = await _videoSegmentService.GetActivityVideoAsync(deviceId, from, to);
+                if (result == null)
+                    return NotFound(new { message = "Nenhum vídeo foi encontrado para essa atividade." });
+
+                var fileName = $"atividade_{deviceId}_{from:yyyyMMdd_HHmmss}.mp4";
+                return File(result.VideoData, result.ContentType, fileName, enableRangeProcessing: true);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "[VideoSegments] Erro ao gerar vídeo de atividade");
+                return StatusCode(500, new { message = "Erro ao gerar vídeo de atividade." });
+            }
         }
 
         private string GetBaseUrl()

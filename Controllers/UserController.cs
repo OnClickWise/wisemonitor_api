@@ -88,7 +88,9 @@ namespace WiseMonitor.Api.Controllers
             try
             {
                 var orgId = GetOrganizationId();
-                var users = await _userService.GetAllUsersAsync(orgId);
+                var callerId = User.GetUserId();
+                var callerRole = User.FindFirst(ClaimTypes.Role)?.Value ?? string.Empty;
+                var users = await _userService.GetAllUsersAsync(orgId, callerId, callerRole);
                 return Ok(users);
             }
             catch (UnauthorizedAccessException ex)

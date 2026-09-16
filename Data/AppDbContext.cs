@@ -17,6 +17,7 @@ namespace WiseMonitor.Api.Data
         public DbSet<Organization> Organizations { get; set; } = null!;
         public DbSet<User> Users { get; set; } = null!;
         public DbSet<PasswordResetToken> PasswordResetTokens { get; set; } = null!;
+        public DbSet<RefreshToken> RefreshTokens { get; set; } = null!;
         public DbSet<Screenshot> Screenshots { get; set; } = null!;
         public DbSet<VideoSegment> VideoSegments { get; set; } = null!;
         public DbSet<Device> Devices { get; set; } = null!;
@@ -52,6 +53,18 @@ namespace WiseMonitor.Api.Data
         // KEYBOARD MONITORING
         public DbSet<KeyboardSession> KeyboardSessions { get; set; } = null!;
         public DbSet<KeyboardWord> KeyboardWords { get; set; } = null!;
+
+        // MOUSE MONITORING
+        public DbSet<MouseSession> MouseSessions { get; set; } = null!;
+
+        // APPLICATION DISPLAY NAMES
+        public DbSet<ApplicationDisplayName> ApplicationDisplayNames { get; set; } = null!;
+
+        // PRODUCTIVITY CLASSIFICATION
+        public DbSet<ProductivityClassification> ProductivityClassifications { get; set; } = null!;
+
+        // ORGANIZATION APPEARANCE SETTINGS
+        public DbSet<OrganizationAppearanceSettings> OrganizationAppearanceSettings { get; set; } = null!;
 
         // ==============================
         // Construtor
@@ -115,6 +128,14 @@ namespace WiseMonitor.Api.Data
             modelBuilder.Entity<UserWorkSchedule>().HasQueryFilter(e =>
                 !_tenant.IsActive || _tenant.IsSuperAdmin || e.OrganizationId == _tenant.OrganizationId);
             modelBuilder.Entity<KeyboardSession>().HasQueryFilter(e =>
+                !_tenant.IsActive || _tenant.IsSuperAdmin || e.OrganizationId == _tenant.OrganizationId);
+            modelBuilder.Entity<MouseSession>().HasQueryFilter(e =>
+                !_tenant.IsActive || _tenant.IsSuperAdmin || e.OrganizationId == _tenant.OrganizationId);
+            modelBuilder.Entity<ApplicationDisplayName>().HasQueryFilter(e =>
+                !_tenant.IsActive || _tenant.IsSuperAdmin || e.OrganizationId == _tenant.OrganizationId);
+            modelBuilder.Entity<ProductivityClassification>().HasQueryFilter(e =>
+                !_tenant.IsActive || _tenant.IsSuperAdmin || e.OrganizationId == _tenant.OrganizationId);
+            modelBuilder.Entity<OrganizationAppearanceSettings>().HasQueryFilter(e =>
                 !_tenant.IsActive || _tenant.IsSuperAdmin || e.OrganizationId == _tenant.OrganizationId);
 
             // ==============================
@@ -328,6 +349,87 @@ namespace WiseMonitor.Api.Data
                 entity.HasOne(w => w.KeyboardSession)
                       .WithMany(k => k.Words)
                       .HasForeignKey(w => w.KeyboardSessionId)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // ==============================
+            // MouseSession
+            // ==============================
+            modelBuilder.Entity<MouseSession>(entity =>
+            {
+                entity.ToTable("MouseSessions");
+                entity.HasKey(m => m.Id);
+                entity.Property(m => m.Id).ValueGeneratedNever();
+                entity.Property(m => m.Application).HasMaxLength(200);
+                entity.Property(m => m.StartAt).IsRequired();
+                entity.Property(m => m.EndAt).IsRequired();
+                entity.Property(m => m.LeftClicks).IsRequired();
+                entity.Property(m => m.RightClicks).IsRequired();
+                entity.Property(m => m.MiddleClicks).IsRequired();
+                entity.Property(m => m.ScrollCount).IsRequired();
+                entity.HasIndex(m => new { m.OrganizationId, m.UserId, m.StartAt });
+                entity.HasIndex(m => m.UserId);
+
+                entity.HasOne<Organization>()
+                      .WithMany()
+                      .HasForeignKey(m => m.OrganizationId)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne<User>()
+                      .WithMany()
+                      .HasForeignKey(m => m.UserId)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // ==============================
+            // ApplicationDisplayName
+            // ==============================
+            modelBuilder.Entity<ApplicationDisplayName>(entity =>
+            {
+                entity.ToTable("ApplicationDisplayNames");
+                entity.HasIndex(a => new { a.OrganizationId, a.ApplicationName }).IsUnique();
+            });
+
+            // ==============================
+            // ProductivityClassification
+            // ==============================
+            modelBuilder.Entity<ProductivityClassification>(entity =>
+            {
+                entity.ToTable("ProductivityClassifications");
+                entity.HasIndex(c => new { c.OrganizationId, c.TeamId, c.Identifier, c.ItemType }).IsUnique();
+
+                entity.HasOne(c => c.Team)
+                      .WithMany()
+                      .HasForeignKey(c => c.TeamId)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // ==============================
+            // RefreshToken
+            // ==============================
+            modelBuilder.Entity<RefreshToken>(entity =>
+            {
+                entity.ToTable("RefreshTokens");
+                entity.HasIndex(t => t.TokenHash).IsUnique();
+                entity.HasIndex(t => t.UserId);
+
+                entity.HasOne<User>()
+                      .WithMany()
+                      .HasForeignKey(t => t.UserId)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // ==============================
+            // OrganizationAppearanceSettings
+            // ==============================
+            modelBuilder.Entity<OrganizationAppearanceSettings>(entity =>
+            {
+                entity.ToTable("OrganizationAppearanceSettings");
+                entity.HasIndex(a => new { a.OrganizationId, a.Theme }).IsUnique();
+
+                entity.HasOne(a => a.Organization)
+                      .WithMany()
+                      .HasForeignKey(a => a.OrganizationId)
                       .OnDelete(DeleteBehavior.Cascade);
             });
 

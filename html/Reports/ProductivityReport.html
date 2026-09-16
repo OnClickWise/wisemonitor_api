@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8" />
+
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0" />
+
+    <title>Relatório de Produtividade</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 32px;
+            font-family: Arial, Helvetica, sans-serif;
+            color: #1f2937;
+            background: #ffffff;
+        }
+
+        .report {
+            width: 100%;
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 24px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #e5e7eb;
+        }
+
+        .company {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .company-logo {
+            width: 72px;
+            height: 72px;
+            object-fit: contain;
+        }
+
+        .company-name {
+            margin: 0;
+            font-size: 22px;
+            font-weight: 700;
+        }
+
+        .report-title {
+            margin: 4px 0 0;
+            font-size: 14px;
+            color: #6b7280;
+        }
+
+        .generated-at {
+            font-size: 12px;
+            color: #6b7280;
+            text-align: right;
+        }
+
+        .section {
+            margin-top: 28px;
+        }
+
+        .section-title {
+            margin: 0 0 12px;
+            font-size: 18px;
+        }
+
+        .information-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .information-card {
+            padding: 14px;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+        }
+
+        .information-label {
+            margin-bottom: 4px;
+            font-size: 11px;
+            font-weight: 700;
+            color: #6b7280;
+            text-transform: uppercase;
+        }
+
+        .information-value {
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        .summary-card {
+            padding: 14px 10px;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .summary-label {
+            font-size: 11px;
+            color: #6b7280;
+        }
+
+        .summary-value {
+            margin-top: 6px;
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .charts {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 16px;
+            break-inside: avoid;
+            page-break-inside: avoid;
+        }
+
+        .chart-card {
+            min-height: 220px;
+            padding: 14px;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            break-inside: avoid;
+            page-break-inside: avoid;
+            overflow: hidden;
+        }
+
+        .chart-title {
+            margin: 0 0 12px;
+            font-size: 15px;
+        }
+
+        .chart-image {
+            display: block;
+            width: 100%;
+            max-height: 220px;
+            object-fit: contain;
+        }
+
+        .productivity-chart {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 22px;
+            min-height: 170px;
+        }
+
+        .productivity-donut {
+            position: relative;
+            width: 140px;
+            height: 140px;
+            flex-shrink: 0;
+            border-radius: 50%;
+        }
+
+            .productivity-donut::after {
+                content: "";
+                position: absolute;
+                inset: 23px;
+                border-radius: 50%;
+                background: #ffffff;
+            }
+
+        .productivity-donut-center {
+            position: absolute;
+            z-index: 1;
+            inset: 23px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            text-align: center;
+        }
+
+            .productivity-donut-center strong {
+                font-size: 18px;
+                color: #111827;
+            }
+
+            .productivity-donut-center span {
+                margin-top: 4px;
+                font-size: 11px;
+                color: #6b7280;
+            }
+
+        .productivity-legend {
+            display: flex;
+            min-width: 180px;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .productivity-legend-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+        }
+
+        .productivity-legend-color {
+            width: 11px;
+            height: 11px;
+            margin-top: 3px;
+            flex-shrink: 0;
+            border-radius: 3px;
+        }
+
+        .productivity-legend-content {
+            display: grid;
+            grid-template-columns: minmax(80px, 1fr) auto;
+            gap: 2px 10px;
+            width: 100%;
+            font-size: 11px;
+        }
+
+        .productivity-legend-label {
+            color: #374151;
+        }
+
+        .productivity-legend-content strong {
+            color: #111827;
+            text-align: right;
+        }
+
+        .productivity-legend-content small {
+            grid-column: 1 / -1;
+            color: #6b7280;
+        }
+
+        .applications-chart {
+            display: flex;
+            min-height: 170px;
+            flex-direction: column;
+            justify-content: center;
+            gap: 12px;
+        }
+
+        .application-bar-item {
+            width: 100%;
+        }
+
+        .application-bar-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 5px;
+            font-size: 11px;
+        }
+
+        .application-bar-name {
+            min-width: 0;
+            flex: 1;
+            overflow: hidden;
+            color: #374151;
+            font-weight: 600;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .application-bar-value {
+            flex-shrink: 0;
+            color: #6b7280;
+            font-size: 10px;
+            white-space: nowrap;
+        }
+
+        .application-bar-track {
+            width: 100%;
+            height: 10px;
+            overflow: hidden;
+            border-radius: 999px;
+            background: #e5e7eb;
+        }
+
+        .application-bar-fill {
+            height: 100%;
+            min-width: 2px;
+            border-radius: 999px;
+            background: #2563eb;
+        }
+
+        .daily-activity-chart {
+            display: flex;
+            min-height: 190px;
+            flex-direction: column;
+            justify-content: space-between;
+            gap: 14px;
+        }
+
+        .daily-chart-main {
+            display: grid;
+            grid-template-columns: 42px minmax(0, 1fr);
+            gap: 10px;
+            min-height: 150px;
+        }
+
+        .daily-y-axis {
+            display: flex;
+            height: 120px;
+            flex-direction: column;
+            justify-content: space-between;
+            padding-top: 2px;
+            padding-bottom: 24px;
+            color: #4b5563;
+            font-size: 9px;
+            text-align: right;
+        }
+
+        .daily-chart-area {
+            position: relative;
+            min-width: 0;
+            height: 120px;
+        }
+
+        .daily-grid-lines {
+            position: absolute;
+            inset: 0 0 24px 0;
+            z-index: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            pointer-events: none;
+        }
+
+            .daily-grid-lines span {
+                display: block;
+                width: 100%;
+                border-top: 1px solid #d1d5db;
+            }
+
+        .daily-bars {
+            position: relative;
+            z-index: 1;
+            display: flex;
+            height: 120px;
+            align-items: flex-end;
+            justify-content: space-between;
+            gap: 3px;
+            padding-bottom: 24px;
+        }
+
+        .daily-bar-column {
+            display: flex;
+            min-width: 0;
+            height: 100%;
+            flex: 1;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-end;
+        }
+
+        .daily-bar-value {
+            min-height: 12px;
+            margin-bottom: 4px;
+            color: #111827;
+            font-size: 9px;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        .daily-bar-area {
+            display: flex;
+            width: 100%;
+            max-width: 18px;
+            height: 84px;
+            align-items: flex-end;
+            overflow: hidden;
+            border-radius: 5px 5px 0 0;
+            background: #eef2f7;
+        }
+
+        .daily-bar-fill {
+            width: 100%;
+            min-height: 1px;
+            border-radius: 5px 5px 0 0;
+            background: #2563eb;
+        }
+
+        .daily-bar-label {
+            position: absolute;
+            bottom: 5px;
+            color: #374151;
+            font-size: 8px;
+            line-height: 1;
+        }
+
+        .daily-summary {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px 18px;
+            padding-top: 12px;
+            border-top: 1px solid #d1d5db;
+        }
+
+            .daily-summary > div {
+                display: flex;
+                flex-direction: column;
+                gap: 3px;
+            }
+
+            .daily-summary strong {
+                color: #111827;
+                font-size: 12px;
+            }
+
+            .daily-summary span {
+                color: #6b7280;
+                font-size: 9px;
+            }
+
+        table {
+            width: 100%;
+            table-layout: fixed;
+            border-collapse: collapse;
+            font-size: 10px;
+        }
+
+        thead {
+            display: table-header-group;
+            background: #f3f4f6;
+        }
+
+        tr {
+            page-break-inside: avoid;
+            break-inside: avoid;
+        }
+
+        th,
+        td {
+            padding: 8px 6px;
+            border: 1px solid #d1d5db;
+            text-align: left;
+            vertical-align: top;
+            white-space: normal;
+            overflow-wrap: anywhere;
+            word-break: break-word;
+        }
+
+        th {
+            font-weight: 700;
+        }
+
+            /* Aplicação */
+            th:nth-child(1),
+            td:nth-child(1) {
+                width: 17%;
+            }
+
+            /* URL */
+            th:nth-child(2),
+            td:nth-child(2) {
+                width: 25%;
+            }
+
+            /* Categoria */
+            th:nth-child(3),
+            td:nth-child(3) {
+                width: 12%;
+            }
+
+            /* Início */
+            th:nth-child(4),
+            td:nth-child(4) {
+                width: 18%;
+            }
+
+            /* Fim */
+            th:nth-child(5),
+            td:nth-child(5) {
+                width: 18%;
+            }
+
+            /* Duração */
+            th:nth-child(6),
+            td:nth-child(6) {
+                width: 10%;
+            }
+
+        .empty-message {
+            padding: 24px;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            text-align: center;
+            color: #6b7280;
+        }
+
+        .report-text-section {
+            break-inside: avoid;
+            page-break-inside: avoid;
+        }
+
+        .report-text-card {
+            padding: 18px;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            color: #4b5563;
+            font-size: 12px;
+            line-height: 1.7;
+        }
+
+            .report-text-card p {
+                margin: 0;
+            }
+
+                .report-text-card p + p {
+                    margin-top: 12px;
+                }
+
+            .report-text-card strong {
+                color: #111827;
+            }
+
+        .footer {
+            margin-top: 28px;
+            padding-top: 16px;
+            border-top: 1px solid #e5e7eb;
+            font-size: 10px;
+            color: #6b7280;
+            text-align: center;
+        }
+
+        .charts-section {
+            break-inside: avoid;
+            page-break-inside: avoid;
+        }
+
+        .charts-wrapper {
+            break-inside: avoid;
+            page-break-inside: avoid;
+        }
+    </style>
+</head>
+
+<body>
+    <main class="report">
+        <header class="header">
+            <div class="company">
+                {{COMPANY_LOGO}}
+
+                <div>
+                    <h1 class="company-name">
+                        {{COMPANY_NAME}}
+                    </h1>
+
+                    <p class="report-title">
+                        Relatório de Produtividade
+                    </p>
+                </div>
+            </div>
+
+            <div class="generated-at">
+                Gerado em:<br />
+                <strong>{{GENERATED_AT}}</strong>
+            </div>
+        </header>
+
+        <section class="section charts-section">
+            <h2 class="section-title">
+                Informações do relatório
+            </h2>
+
+            <div class="information-grid">
+                <div class="information-card">
+                    <div class="information-label">
+                        Tipo
+                    </div>
+
+                    <div class="information-value">
+                        {{SUBJECT_TYPE}}
+                    </div>
+                </div>
+
+                <div class="information-card">
+                    <div class="information-label">
+                        Referência
+                    </div>
+
+                    <div class="information-value">
+                        {{SUBJECT_NAME}}
+                    </div>
+                </div>
+
+                <div class="information-card">
+                    <div class="information-label">
+                        Período
+                    </div>
+
+                    <div class="information-value">
+                        {{REPORT_PERIOD}}
+                    </div>
+                </div>
+
+                <div class="information-card">
+                    <div class="information-label">
+                        Horário
+                    </div>
+
+                    <div class="information-value">
+                        {{REPORT_TIME}}
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="section">
+            <h2 class="section-title">
+                Resumo
+            </h2>
+
+            <div class="summary-grid">
+                <div class="summary-card">
+                    <div class="summary-label">
+                        Produtivo
+                    </div>
+
+                    <div class="summary-value">
+                        {{PRODUCTIVE_TIME}}
+                    </div>
+                </div>
+
+                <div class="summary-card">
+                    <div class="summary-label">
+                        Neutro
+                    </div>
+
+                    <div class="summary-value">
+                        {{NEUTRAL_TIME}}
+                    </div>
+                </div>
+
+                <div class="summary-card">
+                    <div class="summary-label">
+                        Improdutivo
+                    </div>
+
+                    <div class="summary-value">
+                        {{UNPRODUCTIVE_TIME}}
+                    </div>
+                </div>
+
+                <div class="summary-card">
+                    <div class="summary-label">
+                        Ocioso
+                    </div>
+
+                    <div class="summary-value">
+                        {{IDLE_TIME}}
+                    </div>
+                </div>
+
+                <div class="summary-card">
+                    <div class="summary-label">
+                        Total
+                    </div>
+
+                    <div class="summary-value">
+                        {{TOTAL_TIME}}
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="section charts-section">
+            <div class="charts-wrapper">
+
+                <h2 class="section-title">
+                    Gráficos
+                </h2>
+
+                <div class="charts">
+                    <div class="chart-card">
+                        <h3 class="chart-title">
+                            Atividades no período
+                        </h3>
+
+                        {{PRODUCTIVITY_CHART}}
+                    </div>
+
+                    <div class="chart-card">
+                        <h3 class="chart-title">
+                            Aplicações mais utilizadas
+                        </h3>
+
+                        {{APPLICATIONS_CHART}}
+                    </div>
+                </div>
+        </section>
+
+        <section class="section">
+            <h2 class="section-title">
+                Atividades
+            </h2>
+
+            {{ACTIVITIES_TABLE}}
+        </section>
+
+        <section class="section report-text-section">
+            <h2 class="section-title">
+                Análise do período
+            </h2>
+
+            <div class="report-text-card">
+                {{PERIOD_ANALYSIS}}
+            </div>
+        </section>
+
+        <section class="section report-text-section">
+            <h2 class="section-title">
+                Conclusão
+            </h2>
+
+            <div class="report-text-card">
+                {{REPORT_CONCLUSION}}
+            </div>
+        </section>
+
+        <footer class="footer">
+            Relatório gerado automaticamente pelo sistema.
+        </footer>
+    </main>
+</body>
+</html>
