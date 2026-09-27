@@ -24,12 +24,34 @@ namespace WiseMonitor.Api.Services
 
         public async Task<UserDTO> CreateUserAsync(UserCreateDTO dto, Guid organizationId)
         {
+            // ============================
+            // 🔒 Normalização de dados
+            // ============================
+            var firstName = dto.FirstName.Trim();
+            var lastName = dto.LastName.Trim();
+            var email = dto.Email.Trim().ToLowerInvariant();
+
+            // ============================
+            // 🔍 Validação de duplicidade
+            // ============================
+            // E-mail é usado para login (AuthService resolve o usuário só por e-mail,
+            // sem filtrar por organização), então precisa ser único na plataforma
+            // inteira — não só dentro da organização — senão o login fica ambíguo.
+            var duplicate = await _context.Users
+                .AsNoTracking()
+                .AnyAsync(u => u.Email.ToLower() == email
+                    && u.FirstName.ToLower() == firstName.ToLower()
+                    && u.LastName.ToLower() == lastName.ToLower());
+
+            if (duplicate)
+                throw new InvalidOperationException("Já existe um usuário cadastrado com este nome completo e e-mail.");
+
             var user = new User
             {
                 Id = Guid.NewGuid(),
-                FirstName = dto.FirstName,
-                LastName = dto.LastName,
-                Email = dto.Email,
+                FirstName = firstName,
+                LastName = lastName,
+                Email = email,
                 Role = dto.Role,
                 IsActive = dto.IsActive,
                 CreatedAt = DateTime.UtcNow,
