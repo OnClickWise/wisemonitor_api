@@ -2,13 +2,16 @@ using System;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using WiseMonitor.Api.Authorization;
 using WiseMonitor.Api.DTOs;
+using WiseMonitor.Api.Models.Billing;
 using WiseMonitor.Api.Services;
 
 namespace WiseMonitor.Api.Controllers
 {
     [ApiController]
     [Route("api/video-segments")]
+    [RequiresFeature(Features.LiveStream)]
     [Authorize]
     public class VideoSegmentsController : ControllerBase
     {

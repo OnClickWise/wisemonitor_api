@@ -7,7 +7,7 @@ namespace WiseMonitor.Api.DTOs.SuperAdmin
         // Registro
         public bool AllowPublicRegistration { get; set; } = true;
         public bool RequireEmailVerification { get; set; } = true;
-        public string DefaultPlanForNewTenants { get; set; } = "Free";
+        public string DefaultPlanForNewTenants { get; set; } = "Starter";
         public int TrialDurationDays { get; set; } = 14;
 
         // Segurança

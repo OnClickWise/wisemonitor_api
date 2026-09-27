@@ -177,6 +177,7 @@ builder.Services.AddScoped<ILiveSessionService,         LiveSessionService>();
 // Novos serviços
 builder.Services.AddScoped<IDepartmentService,  DepartmentService>();
 builder.Services.AddScoped<IAuditService,       AuditService>();
+builder.Services.AddScoped<IEntitlementService, EntitlementService>();
 builder.Services.AddScoped<IDelegationService,  DelegationService>();
 
 // SuperAdmin

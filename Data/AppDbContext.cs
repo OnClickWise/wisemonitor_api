@@ -66,6 +66,9 @@ namespace WiseMonitor.Api.Data
         // ORGANIZATION APPEARANCE SETTINGS
         public DbSet<OrganizationAppearanceSettings> OrganizationAppearanceSettings { get; set; } = null!;
 
+        // BILLING
+        public DbSet<OrganizationAddOn> OrganizationAddOns { get; set; } = null!;
+
         // ==============================
         // Construtor
         // ==============================
@@ -157,6 +160,17 @@ namespace WiseMonitor.Api.Data
                       .WithOne(d => d.Organization)
                       .HasForeignKey(d => d.OrganizationId)
                       .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasMany(o => o.AddOns)
+                      .WithOne(a => a.Organization)
+                      .HasForeignKey(a => a.OrganizationId)
+                      .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<OrganizationAddOn>(entity =>
+            {
+                entity.ToTable("OrganizationAddOns");
+                entity.HasIndex(a => new { a.OrganizationId, a.Code });
             });
 
             // ==============================

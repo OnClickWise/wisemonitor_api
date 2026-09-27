@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using WiseMonitor.Api.Authorization;
 using WiseMonitor.Api.DTOs.Department;
 using WiseMonitor.Api.Extensions;
+using WiseMonitor.Api.Models.Billing;
 using WiseMonitor.Api.Models.Enums;
 using WiseMonitor.Api.Services;
 using Perms = WiseMonitor.Api.Models.Enums.Permissions;
@@ -13,6 +14,7 @@ namespace WiseMonitor.Api.Controllers
 {
     [ApiController]
     [Route("api/departments")]
+    [RequiresFeature(Features.Departments)]
     [Authorize]
     public class DepartmentController : ControllerBase
     {

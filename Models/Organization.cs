@@ -20,9 +20,9 @@ namespace WiseMonitor.Api.Models
         [MaxLength(20)]
         public string? Cnpj {  get; set; }
 
-        // Plano de assinatura: Free | Basic | Pro | Enterprise
+        // Plano de assinatura: Starter | Professional | Business | Enterprise (ver Billing/PlanCatalog)
         [MaxLength(50)]
-        public string Plan { get; set; } = "Free";
+        public string Plan { get; set; } = "Starter";
 
         // Status: Active | Suspended | Cancelled | Trial
         [MaxLength(50)]
@@ -49,6 +49,12 @@ namespace WiseMonitor.Api.Models
         public int? StorageLimitGb { get; set; }
 
         public DateTime? TrialEndsAt { get; set; }
+
+        // Assinatura: Monthly | Annual. Licenças compradas = MaxUsers.
+        [MaxLength(20)]
+        public string BillingCycle { get; set; } = "Monthly";
+        public DateTime? SubscriptionStartedAt { get; set; }
+        public DateTime? NextBillingAt { get; set; }
 
         [MaxLength(1000)]
         public string? InternalNotes { get; set; }
@@ -83,5 +89,6 @@ namespace WiseMonitor.Api.Models
 
         public ICollection<User> Users { get; set; } = new List<User>();
         public ICollection<Department> Departments { get; set; } = new List<Department>();
+        public ICollection<OrganizationAddOn> AddOns { get; set; } = new List<OrganizationAddOn>();
     }
 }

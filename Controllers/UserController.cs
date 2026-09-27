@@ -23,17 +23,20 @@ namespace WiseMonitor.Api.Controllers
         private readonly IUserService _userService;
         private readonly IAuditService _auditService;
         private readonly IHttpContextAccessor _httpContextAccessor;
+        private readonly IEntitlementService _entitlements;
         private readonly ILogger<UserController> _logger;
 
         public UserController(
             IUserService userService,
             IAuditService auditService,
             IHttpContextAccessor httpContextAccessor,
+            IEntitlementService entitlements,
             ILogger<UserController> logger)
         {
             _userService = userService;
             _auditService = auditService;
             _httpContextAccessor = httpContextAccessor;
+            _entitlements = entitlements;
             _logger = logger;
         }
 
@@ -55,6 +58,16 @@ namespace WiseMonitor.Api.Controllers
                 // Normaliza o papel para o valor canônico
                 dto.Role = UserRoles.Normalize(dto.Role);
 
+                var subscription = await _entitlements.GetAsync(orgId, HttpContext.RequestAborted);
+                if (subscription != null && !subscription.HasSeatAvailable)
+                    return StatusCode(StatusCodes.Status403Forbidden, new
+                    {
+                        code = "SEAT_LIMIT_REACHED",
+                        seatsPurchased = subscription.SeatsPurchased,
+                        seatsUsed = subscription.SeatsUsed,
+                        message = "Todas as licenças contratadas estão em uso. Adicione licenças para cadastrar novos colaboradores.",
+                    });
+
                 var createdUser = await _userService.CreateUserAsync(dto, orgId);
 
                 await _auditService.LogAsync(
@@ -73,6 +86,10 @@ namespace WiseMonitor.Api.Controllers
             catch (UnauthorizedAccessException ex)
             {
                 return Unauthorized(new { error = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Conflict(new { error = ex.Message });
             }
             catch (Exception ex)
             {

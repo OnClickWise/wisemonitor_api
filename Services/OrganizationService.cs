@@ -1,9 +1,11 @@
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using WiseMonitor.Api.Data;
 using WiseMonitor.Api.DTOs;
 using WiseMonitor.Api.Models;
+using WiseMonitor.Api.Models.Billing;
 
 namespace WiseMonitor.Api.Services
 {
@@ -50,10 +52,20 @@ namespace WiseMonitor.Api.Services
             // ============================
             // 🏢 Criação da Organização
             // ============================
+            // Todo cadastro começa em trial do Professional completo, sem cartão.
+            var trialDays = await _context.PlatformSettings
+                .AsNoTracking()
+                .Select(s => (int?)s.TrialDurationDays)
+                .FirstOrDefaultAsync() ?? PlanCatalog.TrialDays;
+
             var organization = new Organization
             {
                 Id = Guid.NewGuid(),
                 Name = organizationName,
+                Plan = PlanCatalog.TrialPlan,
+                Status = "Trial",
+                TrialEndsAt = DateTime.UtcNow.AddDays(trialDays > 0 ? trialDays : PlanCatalog.TrialDays),
+                SubscriptionStartedAt = DateTime.UtcNow,
                 CreatedAt = DateTime.UtcNow
             };
 

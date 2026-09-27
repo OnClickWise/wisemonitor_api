@@ -4,8 +4,10 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using WiseMonitor.Api.Authorization;
 using WiseMonitor.Api.DTOs;
 using WiseMonitor.Api.Extensions;
+using WiseMonitor.Api.Models.Billing;
 using WiseMonitor.Api.Services;
 
 namespace WiseMonitor.Api.Controllers 
@@ -17,17 +19,20 @@ namespace WiseMonitor.Api.Controllers
         private readonly IScreenshotService _screenshotService;
         private readonly ILiveMonitoringService _liveService;
         private readonly IDeviceService _deviceService;
+        private readonly IEntitlementService _entitlements;
         private readonly ILogger<ScreenshotsController> _logger;
 
         public ScreenshotsController(
             IScreenshotService screenshotService,
             ILiveMonitoringService liveService,
             IDeviceService deviceService,
+            IEntitlementService entitlements,
             ILogger<ScreenshotsController> logger)
         {
             _screenshotService = screenshotService;
             _liveService = liveService;
             _deviceService = deviceService;
+            _entitlements = entitlements;
             _logger = logger;
         }
 
@@ -60,6 +65,10 @@ namespace WiseMonitor.Api.Controllers
                 {
                     dto.OrganizationId = User.GetOrganizationId();
                 }
+
+                // Screenshots são do Professional em diante — não armazena para planos sem a feature.
+                if (!await _entitlements.HasFeatureAsync(dto.OrganizationId, Features.Screenshots, HttpContext.RequestAborted))
+                    return RequiresFeatureFilter.FeatureNotInPlan(Features.Screenshots);
 
                 var result = await _screenshotService.SaveScreenshotAsync(dto);
 
@@ -103,6 +112,7 @@ namespace WiseMonitor.Api.Controllers
         // 📄 LISTAR POR ORGANIZAÇÃO
         // ============================
         [HttpGet("list")]
+        [RequiresFeature(Features.Screenshots)]
         [Authorize] 
         public async Task<IActionResult> List()
         {
@@ -147,6 +157,7 @@ namespace WiseMonitor.Api.Controllers
         // 🖼️ ÚLTIMA SCREENSHOT DO USUÁRIO
         // ============================
         [HttpGet("last/{userId:guid}")]
+        [RequiresFeature(Features.Screenshots)]
         public async Task<IActionResult> GetLast(Guid userId)
         {
             var screenshot = await _screenshotService.GetLastScreenshotByUserAsync(userId);

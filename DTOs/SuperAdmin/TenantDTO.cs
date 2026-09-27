@@ -121,7 +121,7 @@ namespace WiseMonitor.Api.DTOs.SuperAdmin
         public string AdminPassword { get; set; } = string.Empty;
 
         [MaxLength(50)]
-        public string Plan { get; set; } = "Free";
+        public string Plan { get; set; } = "Starter";
 
         public int? MaxUsers { get; set; }
         public int? StorageLimitGb { get; set; }

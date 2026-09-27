@@ -7,6 +7,7 @@ using WiseMonitor.Api.Data;
 using WiseMonitor.Api.DTOs.SuperAdmin;
 using WiseMonitor.Api.Helpers;
 using WiseMonitor.Api.Models;
+using WiseMonitor.Api.Models.Billing;
 using WiseMonitor.Api.Models.Enums;
 using WiseMonitor.Api.Utils;
 
@@ -158,7 +159,7 @@ namespace WiseMonitor.Api.Services
             var org = new Organization
             {
                 Name = dto.OrganizationName,
-                Plan = dto.Plan,
+                Plan = PlanCatalog.Normalize(dto.Plan),
                 Status = dto.TrialEndsAt.HasValue ? "Trial" : "Active",
                 MaxUsers = dto.MaxUsers,
                 StorageLimitGb = dto.StorageLimitGb,
@@ -205,7 +206,7 @@ namespace WiseMonitor.Api.Services
                 ?? throw new KeyNotFoundException("Tenant não encontrado.");
 
             if (dto.Name != null) org.Name = dto.Name;
-            if (dto.Plan != null) org.Plan = dto.Plan;
+            if (dto.Plan != null) org.Plan = PlanCatalog.Normalize(dto.Plan);
             if (dto.MaxUsers.HasValue) org.MaxUsers = dto.MaxUsers;
             if (dto.MaxDevices.HasValue) org.MaxDevices = dto.MaxDevices;
             if (dto.StorageLimitGb.HasValue) org.StorageLimitGb = dto.StorageLimitGb;
@@ -289,7 +290,7 @@ namespace WiseMonitor.Api.Services
                 ?? throw new KeyNotFoundException("Tenant não encontrado.");
 
             var oldPlan = org.Plan;
-            org.Plan = dto.Plan;
+            org.Plan = PlanCatalog.Normalize(dto.Plan);
             org.UpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync(ct);

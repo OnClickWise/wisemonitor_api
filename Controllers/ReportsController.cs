@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using WiseMonitor.Api.Authorization;
 using WiseMonitor.Api.DTOs.Reports;
 using WiseMonitor.Api.Extensions;
+using WiseMonitor.Api.Models.Billing;
 using WiseMonitor.Api.Models.Enums;
 using WiseMonitor.Api.Services.Reports;
 
@@ -34,6 +35,7 @@ public class ReportsController : ControllerBase
 
     [HttpPost("pdf")]
     [HasPermission(Permissions.ReportsExport)]
+    [RequiresFeature(Features.ReportsExport)]
     public async Task<IActionResult> GeneratePdf(
         [FromBody] ReportFilterDTO filter)
     {
@@ -83,6 +85,7 @@ public class ReportsController : ControllerBase
 
     [HttpPost("csv")]
     [HasPermission(Permissions.ReportsExport)]
+    [RequiresFeature(Features.ReportsExport)]
     public async Task<IActionResult> GenerateCsv(
         [FromBody] ReportFilterDTO filter)
     {
