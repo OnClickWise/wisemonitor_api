@@ -89,7 +89,7 @@ namespace WiseMonitor.Api.Models.Billing
 
         public static readonly IReadOnlyList<PlanDefinition> Plans = new[]
         {
-            new PlanDefinition(PlanCodes.Starter,      1,  3.90m, 39m, 19m,  30, true,  new HashSet<string>(StarterFeatures)),
+            new PlanDefinition(PlanCodes.Starter,      1,  3.90m, 39m, 10m,  30, true,  new HashSet<string>(StarterFeatures)),
             new PlanDefinition(PlanCodes.Professional, 2,  5.90m, 59m,  0m,  90, true,  new HashSet<string>(ProfessionalFeatures)),
             new PlanDefinition(PlanCodes.Business,     3,  8.90m, 89m,  0m, 180, true,  new HashSet<string>(BusinessFeatures)),
             new PlanDefinition(PlanCodes.Enterprise,   4, 12.90m,  0m,  0m, 365, false, new HashSet<string>(EnterpriseFeatures)),

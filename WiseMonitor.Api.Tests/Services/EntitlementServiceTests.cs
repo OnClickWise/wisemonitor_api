@@ -67,9 +67,13 @@ public class PlanCatalogTests
     [Fact]
     public void Quote_SmallStarter_AppliesOrganizationMinimum()
     {
-        var q = PlanCatalog.Quote(PlanCodes.Starter, 3, BillingCycles.Monthly);
+        var q = PlanCatalog.Quote(PlanCodes.Starter, 2, BillingCycles.Monthly);
         Assert.True(q.MinimumApplied);
-        Assert.Equal(19m, q.TotalUsd);
+        Assert.Equal(10m, q.TotalUsd);
+
+        var above = PlanCatalog.Quote(PlanCodes.Starter, 3, BillingCycles.Monthly);
+        Assert.False(above.MinimumApplied);
+        Assert.Equal(11.70m, above.TotalUsd);
     }
 
     [Fact]
