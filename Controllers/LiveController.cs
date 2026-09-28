@@ -27,6 +27,12 @@ namespace WiseMonitor.Api.Controllers
             if (!Guid.TryParse(orgClaim, out var organizationId))
                 return Unauthorized("organizationId inválido no token.");
 
+            // Lista as sessões da organização inteira; o supervisor, restrito às
+            // próprias equipes, não tem acesso a esse panorama.
+            var role = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? User.FindFirst("role")?.Value;
+            if (Services.AccessScopeService.IsRestrictedRole(role))
+                return Forbid();
+
             var sessions = _hub.GetSessionsForOrg(organizationId);
 
             return Ok(new

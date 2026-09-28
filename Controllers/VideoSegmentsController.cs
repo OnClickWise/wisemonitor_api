@@ -16,11 +16,16 @@ namespace WiseMonitor.Api.Controllers
     public class VideoSegmentsController : ControllerBase
     {
         private readonly IVideoSegmentService _videoSegmentService;
+        private readonly IAccessScopeService _scopeService;
         private readonly ILogger<VideoSegmentsController> _logger;
 
-        public VideoSegmentsController(IVideoSegmentService videoSegmentService, ILogger<VideoSegmentsController> logger)
+        public VideoSegmentsController(
+            IVideoSegmentService videoSegmentService,
+            IAccessScopeService scopeService,
+            ILogger<VideoSegmentsController> logger)
         {
             _videoSegmentService = videoSegmentService;
+            _scopeService = scopeService;
             _logger = logger;
         }
 
@@ -81,6 +86,10 @@ namespace WiseMonitor.Api.Controllers
             if (string.IsNullOrWhiteSpace(deviceId))
                 return BadRequest(new { message = "deviceId é obrigatório." });
 
+            // Supervisor: só máquinas de quem está nas equipes que administra.
+            if (!await _scopeService.CanAccessDeviceAsync(User, deviceId))
+                return NotFound();
+
             var baseUrl = GetBaseUrl();
             var latest = await _videoSegmentService.GetLatestAsync(deviceId, baseUrl);
 
@@ -102,6 +111,9 @@ namespace WiseMonitor.Api.Controllers
             if (to <= from)
                 return BadRequest(new { message = "'to' deve ser posterior a 'from'." });
 
+            if (!await _scopeService.CanAccessDeviceAsync(User, deviceId))
+                return NotFound();
+
             var baseUrl = GetBaseUrl();
             var history = await _videoSegmentService.GetHistoryWithContextAsync(deviceId, from, to, baseUrl);
 
@@ -122,6 +134,9 @@ namespace WiseMonitor.Api.Controllers
 
             if (to <= from)
                 return BadRequest(new { message = "'to' deve ser posterior a 'from'." });
+
+            if (!await _scopeService.CanAccessDeviceAsync(User, deviceId))
+                return NotFound();
 
             try
             {

@@ -19,6 +19,10 @@ namespace WiseMonitor.Api.DTOs
         public bool IsActive { get; set; }
         public DateTime CreatedAt { get; set; }
 
+        // Se quem está vendo pode editar/apagar (supervisor só nas jornadas das
+        // próprias equipes). Preenchido pelo controller.
+        public bool CanManage { get; set; } = true;
+
         public List<WorkScheduleRuleDTO> Rules { get; set; } = new();
 
         public static WorkScheduleResponseDTO FromEntity(WorkSchedule entity)

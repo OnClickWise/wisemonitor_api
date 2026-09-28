@@ -17,7 +17,8 @@ public interface IAppFocusService
     Task<IEnumerable<AppFocusEventResponseDTO>> GetAllAsync(
         Guid organizationId,
         DateTime startDate,
-        DateTime endDate);
+        DateTime endDate,
+        IReadOnlyCollection<Guid>? userIds = null);
 
     Task<AppFocusEventResponseDTO?> GetByIdAsync(
         Guid id,

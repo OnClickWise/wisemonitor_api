@@ -19,7 +19,9 @@ namespace WiseMonitor.Api.Repositories
 
         public async Task<Screenshot?> GetByIdAsync(Guid id)
         {
-            return await _context.Screenshots.FindAsync(id);
+            return await _context.Screenshots
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Id == id);
         }
 
         public async Task<Screenshot?> GetLastByUserAsync(Guid monitoredUserId)
@@ -31,17 +33,13 @@ namespace WiseMonitor.Api.Repositories
                 .FirstOrDefaultAsync();
         }
 
+        // Os deletes abaixo vão direto no banco (ExecuteDelete): carregar as entidades
+        // pra RemoveRange traria o ImageData de cada uma só pra apagá-lo.
         public async Task DeletePreviousAsync(Guid monitoredUserId)
         {
-            var previous = await _context.Screenshots
+            await _context.Screenshots
                 .Where(s => s.MonitoredUserId == monitoredUserId)
-                .ToListAsync();
-
-            if (previous.Any())
-            {
-                _context.Screenshots.RemoveRange(previous);
-                await _context.SaveChangesAsync();
-            }
+                .ExecuteDeleteAsync();
         }
 
         public async Task UpsertAsync(Screenshot screenshot)
@@ -52,17 +50,19 @@ namespace WiseMonitor.Api.Repositories
 
             // Mantém apenas as últimas 10 por dispositivo para evitar crescimento ilimitado do BD
             // (não apaga tudo antes — evita race condition onde a URL ainda está sendo servida)
-            var old = await _context.Screenshots
+            var oldIds = await _context.Screenshots
                 .Where(s => s.MonitoredUserId == screenshot.MonitoredUserId
                          && s.DeviceId == screenshot.DeviceId)
                 .OrderByDescending(s => s.CapturedAt)
                 .Skip(10)
+                .Select(s => s.Id)
                 .ToListAsync();
 
-            if (old.Count > 0)
+            if (oldIds.Count > 0)
             {
-                _context.Screenshots.RemoveRange(old);
-                await _context.SaveChangesAsync();
+                await _context.Screenshots
+                    .Where(s => oldIds.Contains(s.Id))
+                    .ExecuteDeleteAsync();
             }
         }
 
@@ -78,10 +78,21 @@ namespace WiseMonitor.Api.Repositories
         // ✅ MULTI-TENANT (CORRETO) — retorna apenas a mais recente por dispositivo
         public async Task<IEnumerable<Screenshot>> GetAllByOrganizationAsync(Guid organizationId)
         {
+            // Projeta só os metadados: essa lista é chamada a cada poucos segundos pelas
+            // telas de dispositivos, e trazer o ImageData de todas as capturas da org
+            // (até 10 por device) pra usar uma por device era o maior custo do backend.
             var all = await _context.Screenshots
                 .AsNoTracking()
                 .Where(x => x.OrganizationId == organizationId)
                 .OrderByDescending(x => x.CapturedAt)
+                .Select(x => new Screenshot
+                {
+                    Id = x.Id,
+                    OrganizationId = x.OrganizationId,
+                    MonitoredUserId = x.MonitoredUserId,
+                    DeviceId = x.DeviceId,
+                    CapturedAt = x.CapturedAt
+                })
                 .ToListAsync();
 
             // Filtra em memória: 1 screenshot por deviceId (lista já está desc, logo a 1ª é a mais recente)

@@ -34,6 +34,10 @@ namespace WiseMonitor.Api.Services
         // deviceId -> conjunto de sessionIds de viewers assistindo esse device agora
         private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, byte>> _watchers = new();
 
+        // sessionId -> usuários que essa conexão pode ver. Só existe para conexões
+        // restritas (supervisor); sem entrada = vê a organização inteira.
+        private readonly ConcurrentDictionary<string, IReadOnlySet<string>> _adminScopes = new();
+
         /// <summary>
         /// Disparado quando um device ganha o primeiro espectador ou perde o último.
         /// É o que permite ao agent (via /ws/agent-stream, LiveFrameRelay) saber quando
@@ -127,11 +131,17 @@ namespace WiseMonitor.Api.Services
         // ================================
         // ADMINS
         // ================================
-        public void RegisterAdmin(string orgId, string sessionId, WebSocket adminSocket)
+        public void RegisterAdmin(string orgId, string sessionId, WebSocket adminSocket,
+            IReadOnlySet<string>? allowedUserIds = null)
         {
             _logger.LogInformation(
                 "[AdminConnected] Org={OrgId}, Session={SessionId}, SocketState={SocketState}",
                 orgId, sessionId, adminSocket.State);
+
+            if (allowedUserIds != null)
+                _adminScopes[sessionId] = allowedUserIds;
+            else
+                _adminScopes.TryRemove(sessionId, out _);
 
             var orgAdmins = _adminSockets.GetOrAdd(orgId, _ => new ConcurrentDictionary<string, WebSocket>());
             orgAdmins[sessionId] = adminSocket;
@@ -142,6 +152,8 @@ namespace WiseMonitor.Api.Services
         public void UnregisterAdmin(string orgId, string sessionId)
         {
             _logger.LogInformation("[AdminDisconnected] Org={OrgId}, Session={SessionId}", orgId, sessionId);
+
+            _adminScopes.TryRemove(sessionId, out _);
 
             if (_adminSockets.TryGetValue(orgId, out var orgAdmins))
             {
@@ -196,6 +208,38 @@ namespace WiseMonitor.Api.Services
             _watchers.TryGetValue(deviceId, out var set) && !set.IsEmpty;
 
         /// <summary>
+        /// Se a conexão pode ver esse device. Conexão restrita (supervisor) só vê
+        /// devices cujo usuário está no escopo dela; device fora do cache não é visível.
+        /// </summary>
+        public bool CanSessionSeeDevice(string sessionId, string deviceId)
+        {
+            if (!_adminScopes.TryGetValue(sessionId, out var allowed))
+                return true;
+
+            return _liveDevices.TryGetValue(deviceId, out var device) &&
+                   !string.IsNullOrEmpty(device.UserId) &&
+                   allowed.Contains(device.UserId);
+        }
+
+        private static IReadOnlyCollection<MonitoringMessageDto> FilterForScope(
+            IReadOnlyCollection<MonitoringMessageDto> devices, IReadOnlySet<string>? allowed) =>
+            allowed == null
+                ? devices
+                : devices.Where(d => !string.IsNullOrEmpty(d.UserId) && allowed.Contains(d.UserId)).ToList();
+
+        private List<MonitoringMessageDto> GetOrgDevices(string orgId) =>
+            _liveDevices.Values
+                .Where(d => (d.OrgId ?? "default") == orgId)
+                .Select(WithFreshnessApplied)
+                .ToList();
+
+        public IReadOnlyCollection<MonitoringMessageDto> GetAllLiveDevicesForSession(string orgId, string sessionId)
+        {
+            _adminScopes.TryGetValue(sessionId, out var allowed);
+            return FilterForScope(GetOrgDevices(orgId), allowed);
+        }
+
+        /// <summary>
         /// Sockets dos admins que estão com a tela deste device aberta agora. O relay
         /// usa isso para mandar o frame só a quem está olhando, em vez de transmitir
         /// para toda a organização.
@@ -244,10 +288,10 @@ namespace WiseMonitor.Api.Services
             return device == null ? null : WithFreshnessApplied(device);
         }
 
-        public IReadOnlyCollection<MonitoringMessageDto> GetAllLiveDevices()
+        public IReadOnlyCollection<MonitoringMessageDto> GetAllLiveDevices(string orgId)
         {
-            _logger.LogDebug("[GetAllDevices]");
-            return _liveDevices.Values.Select(WithFreshnessApplied).ToList();
+            _logger.LogDebug("[GetAllDevices] Org={OrgId}", orgId);
+            return GetOrgDevices(orgId);
         }
 
         /// <summary>
@@ -345,55 +389,14 @@ namespace WiseMonitor.Api.Services
             return expired;
         }
 
-        private async Task BroadcastToOrgAsync(string orgId)
-        {
-            if (!_adminSockets.TryGetValue(orgId, out var admins) || !admins.Any())
-                return;
-
-            var allDevices = _liveDevices.Values
-                .Where(d => (d.OrgId ?? "default") == orgId)
-                .Select(WithFreshnessApplied)
-                .ToList();
-
-            var wrapper = new { eventType = "update", payload = allDevices };
-            var json = JsonSerializer.Serialize(wrapper, _jsonOptions);
-            var bytes = Encoding.UTF8.GetBytes(json);
-            var segment = new ArraySegment<byte>(bytes);
-
-            var disconnected = new List<string>();
-
-            foreach (var (sessionId, ws) in admins.ToList())
-            {
-                if (ws.State == WebSocketState.Open)
-                {
-                    try
-                    {
-                        await ws.SendAsync(segment, WebSocketMessageType.Text, true, CancellationToken.None);
-                    }
-                    catch
-                    {
-                        disconnected.Add(sessionId);
-                    }
-                }
-                else
-                {
-                    disconnected.Add(sessionId);
-                }
-            }
-
-            foreach (var sessionId in disconnected)
-                admins.TryRemove(sessionId, out _);
-        }
+        private Task BroadcastToOrgAsync(string orgId) => SendDevicesUpdateAsync(orgId);
 
         // ================================
         // VIDEO SEGMENTS — notifica dashboards conectados que um novo segmento
         // ficou disponível para o device (reaproveita o mesmo canal /ws/monitor).
         // ================================
-        public async Task NotifyNewSegmentAsync(string deviceId, string orgId, Guid segmentId, DateTime startedAt, DateTime endedAt)
+        public Task NotifyNewSegmentAsync(string deviceId, string orgId, Guid segmentId, DateTime startedAt, DateTime endedAt)
         {
-            if (!_adminSockets.TryGetValue(orgId, out var admins) || !admins.Any())
-                return;
-
             var wrapper = new
             {
                 eventType = "segment",
@@ -402,14 +405,77 @@ namespace WiseMonitor.Api.Services
                 startedAt,
                 endedAt
             };
-            var json = JsonSerializer.Serialize(wrapper, _jsonOptions);
-            var bytes = Encoding.UTF8.GetBytes(json);
-            var segment = new ArraySegment<byte>(bytes);
+
+            _liveDevices.TryGetValue(deviceId, out var device);
+
+            // Conexão restrita (supervisor) só é avisada de devices do escopo dela.
+            return SendToOrgAdminsAsync(orgId, allowed =>
+                allowed == null ||
+                (device != null && !string.IsNullOrEmpty(device.UserId) && allowed.Contains(device.UserId))
+                    ? wrapper
+                    : null);
+        }
+
+        // ================================
+        // BROADCAST
+        // ================================
+        public Task BroadcastFrameAsync(string deviceId, MonitoringMessageDto frame)
+        {
+            var orgId = frame.OrgId ?? "default";
+            _logger.LogDebug("[Broadcast] Org={OrgId}, Device={DeviceId}", orgId, deviceId);
+
+            // Manda TODOS os devices da org para o front sempre ter um estado consistente.
+            return SendDevicesUpdateAsync(orgId);
+        }
+
+        // Lista completa de devices da org — cada conexão recebe só os que pode ver.
+        private Task SendDevicesUpdateAsync(string orgId)
+        {
+            var allDevices = GetOrgDevices(orgId);
+
+            return SendToOrgAdminsAsync(orgId, allowed =>
+                new { eventType = "update", payload = FilterForScope(allDevices, allowed) });
+        }
+
+        // payloadFor recebe o escopo da conexão (null = organização inteira) e devolve
+        // o que ela pode receber, ou null para não mandar nada.
+        private async Task SendToOrgAdminsAsync(string orgId, Func<IReadOnlySet<string>?, object?> payloadFor)
+        {
+            if (!_adminSockets.TryGetValue(orgId, out var admins) || !admins.Any())
+            {
+                _logger.LogDebug("[Broadcast] Nenhum admin conectado na org {OrgId}", orgId);
+                return;
+            }
+
+            // Conexões sem restrição recebem o mesmo conteúdo: serializa uma vez só.
+            ArraySegment<byte>? unrestricted = null;
+            var disconnected = new List<string>();
 
             foreach (var (sessionId, ws) in admins.ToList())
             {
                 if (ws.State != WebSocketState.Open)
+                {
+                    disconnected.Add(sessionId);
                     continue;
+                }
+
+                ArraySegment<byte> segment;
+                if (_adminScopes.TryGetValue(sessionId, out var allowed))
+                {
+                    var scoped = payloadFor(allowed);
+                    if (scoped == null) continue;
+                    segment = new ArraySegment<byte>(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(scoped, _jsonOptions)));
+                }
+                else
+                {
+                    if (unrestricted == null)
+                    {
+                        var payload = payloadFor(null);
+                        if (payload == null) continue;
+                        unrestricted = new ArraySegment<byte>(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(payload, _jsonOptions)));
+                    }
+                    segment = unrestricted.Value;
+                }
 
                 try
                 {
@@ -417,60 +483,16 @@ namespace WiseMonitor.Api.Services
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "[NotifyNewSegment] Falha ao notificar sessão {SessionId}", sessionId);
-                }
-            }
-        }
-
-        // ================================
-        // BROADCAST
-        // ================================
-        public async Task BroadcastFrameAsync(string deviceId, MonitoringMessageDto frame)
-        {
-            var orgId = frame.OrgId ?? "default";
-
-            _logger.LogDebug("[Broadcast] Org={OrgId}, Device={DeviceId}", orgId, deviceId);
-
-            if (!_adminSockets.TryGetValue(orgId, out var admins) || !admins.Any())
-            {
-                _logger.LogDebug("[Broadcast] Nenhum admin conectado na org {OrgId}", orgId);
-                return;
-            }
-
-            // Send ALL devices for this org so the frontend always has a full consistent state
-            var allDevices = _liveDevices.Values
-                .Where(d => d.OrgId == orgId)
-                .Select(WithFreshnessApplied)
-                .ToList();
-
-            var wrapper = new { eventType = "update", payload = allDevices };
-            var json = JsonSerializer.Serialize(wrapper, _jsonOptions);
-            var bytes = Encoding.UTF8.GetBytes(json);
-            var segment = new ArraySegment<byte>(bytes);
-
-            var disconnected = new List<string>();
-
-            foreach (var (sessionId, ws) in admins.ToList())
-            {
-                if (ws.State == WebSocketState.Open)
-                {
-                    try
-                    {
-                        await ws.SendAsync(segment, WebSocketMessageType.Text, true, CancellationToken.None);
-                    }
-                    catch
-                    {
-                        disconnected.Add(sessionId);
-                    }
-                }
-                else
-                {
+                    _logger.LogWarning(ex, "[Broadcast] Falha ao enviar para sessão {SessionId}", sessionId);
                     disconnected.Add(sessionId);
                 }
             }
 
             foreach (var sessionId in disconnected)
+            {
                 admins.TryRemove(sessionId, out _);
+                _adminScopes.TryRemove(sessionId, out _);
+            }
         }
     }
 }

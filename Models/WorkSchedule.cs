@@ -31,6 +31,9 @@ namespace WiseMonitor.Api.Models
             = new List<UserWorkSchedule>();
 
         // Auditoria
+        // Quem criou — permite ao supervisor editar as jornadas que ele mesmo criou.
+        // Nulo nas jornadas padrão e nas criadas antes desse campo existir.
+        public Guid? CreatedByUserId { get; set; }
         public bool IsActive { get; set; } = true; // Indica se o cronograma está ativo
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow; // Data de criação
         public DateTime? UpdatedAt { get; set; } // Data da última atualização

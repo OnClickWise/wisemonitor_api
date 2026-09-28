@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using WiseMonitor.Api.DTOs;
+using WiseMonitor.Api.Helpers;
 using WiseMonitor.Api.Models;
 using WiseMonitor.Api.Data;
 
@@ -31,18 +32,40 @@ namespace WiseMonitor.Api.Repositories
                 .FirstOrDefaultAsync(x => x.Id == id && x.UserId == userId);
         }
 
+        // Sessão que cruza o período também entra: o agent reaproveita a mesma sessão
+        // enquanto está ligado, então ela pode ter começado antes do dia consultado.
+        private IQueryable<KeyboardSession> InPeriod(DateTime start, DateTime end)
+        {
+            var (from, to) = ActivityPeriod.Days(start, end);
+            from = DateTime.SpecifyKind(from, DateTimeKind.Utc);
+            to = DateTime.SpecifyKind(to, DateTimeKind.Utc);
+
+            return _context.KeyboardSessions
+                .AsNoTracking()
+                .Where(x => x.StartAt < to && x.EndAt >= from);
+        }
+
         public async Task<IEnumerable<KeyboardSession>> GetHistoryAsync(
             Guid userId, DateTime start, DateTime end)
         {
-            start = DateTime.SpecifyKind(start, DateTimeKind.Utc);
-            end = DateTime.SpecifyKind(end, DateTimeKind.Utc);
-
-            return await _context.KeyboardSessions
+            return await InPeriod(start, end)
                 .Include(x => x.Words)
-                .Where(x =>
-                    x.UserId == userId &&
-                    x.StartAt >= start &&
-                    x.EndAt <= end)
+                .Where(x => x.UserId == userId)
+                .OrderByDescending(x => x.StartAt)
+                .ToListAsync();
+        }
+
+        public async Task<IEnumerable<KeyboardSession>> GetByOrganizationAsync(
+            Guid organizationId, DateTime start, DateTime end, IReadOnlyCollection<Guid>? userIds)
+        {
+            var query = InPeriod(start, end)
+                .Include(x => x.Words)
+                .Where(x => x.OrganizationId == organizationId);
+
+            if (userIds != null)
+                query = query.Where(x => userIds.Contains(x.UserId));
+
+            return await query
                 .OrderByDescending(x => x.StartAt)
                 .ToListAsync();
         }
@@ -50,14 +73,8 @@ namespace WiseMonitor.Api.Repositories
         public async Task<KeyboardSummaryDTO> GetSummaryAsync(
             Guid userId, DateTime start, DateTime end)
         {
-            start = DateTime.SpecifyKind(start, DateTimeKind.Utc);
-            end = DateTime.SpecifyKind(end, DateTimeKind.Utc);
-
-            var grouped = await _context.KeyboardSessions
-                .Where(x =>
-                    x.UserId == userId &&
-                    x.StartAt >= start &&
-                    x.EndAt <= end)
+            var grouped = await InPeriod(start, end)
+                .Where(x => x.UserId == userId)
                 .GroupBy(_ => 1)
                 .Select(g => new
                 {
@@ -67,8 +84,9 @@ namespace WiseMonitor.Api.Repositories
                 })
                 .FirstOrDefaultAsync();
 
+            // Sem sessões no período devolve zerado em vez de null (que virava 204 sem corpo).
             if (grouped == null)
-                return null;
+                return new KeyboardSummaryDTO { Classification = KeyboardClassification.Improdutivo };
 
             var classification =
                 grouped.AverageScore >= 70 ? KeyboardClassification.Produtivo :

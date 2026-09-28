@@ -14,6 +14,9 @@ namespace WiseMonitor.Api.Repositories
         Task<IEnumerable<KeyboardSession>> GetHistoryAsync(
             Guid userId, DateTime start, DateTime end);
 
+        // userIds null = organização inteira
+        Task<IEnumerable<KeyboardSession>> GetByOrganizationAsync(
+            Guid organizationId, DateTime start, DateTime end, IReadOnlyCollection<Guid>? userIds);
         Task<KeyboardSummaryDTO> GetSummaryAsync(
             Guid userId, DateTime start, DateTime end);
 

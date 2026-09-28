@@ -47,6 +47,10 @@ namespace WiseMonitor.Api.Services
             Guid userId, DateTime start, DateTime end)
             => _repository.GetHistoryAsync(userId, start, end);
 
+        public Task<IEnumerable<MouseSession>> GetByOrganizationAsync(
+            Guid organizationId, DateTime start, DateTime end, IReadOnlyCollection<Guid>? userIds)
+            => _repository.GetByOrganizationAsync(organizationId, start, end, userIds);
+
         public Task<MouseSummaryDTO> GetSummaryAsync(
             Guid userId, DateTime start, DateTime end)
             => _repository.GetSummaryAsync(userId, start, end);

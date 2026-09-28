@@ -19,7 +19,7 @@ namespace WiseMonitor.Api.Services
             _repository = repository;
         }
 
-        public async Task<WorkScheduleResponseDTO> CreateAsync(Guid organizationId, WorkScheduleCreateDTO dto)
+        public async Task<WorkScheduleResponseDTO> CreateAsync(Guid organizationId, WorkScheduleCreateDTO dto, Guid? createdByUserId = null)
         {
             WorkScheduleValidator.ValidateCreate(dto);
 
@@ -27,6 +27,7 @@ namespace WiseMonitor.Api.Services
             {
                 Id = Guid.NewGuid(),
                 OrganizationId = organizationId,
+                CreatedByUserId = createdByUserId,
                 Name = dto.Name,
                 Description = dto.Description,
                 ScheduleCode = dto.ScheduleCode,
@@ -85,12 +86,12 @@ namespace WiseMonitor.Api.Services
             return await _repository.DeleteAsync(id);
         }
 
-        public async Task<bool> AssignToUserAsync(AssignUserScheduleDTO dto)
+        public async Task<bool> AssignToUserAsync(AssignUserScheduleDTO dto, Guid organizationId)
         {
-            return await _repository.AssignScheduleToUserAsync(dto.UserId, dto.WorkScheduleId);
+            return await _repository.AssignScheduleToUserAsync(dto.UserId, dto.WorkScheduleId, organizationId);
         }
 
-        public async Task<WorkScheduleResponseDTO> CloneAsync(Guid id, string newName, Guid organizationId)
+        public async Task<WorkScheduleResponseDTO> CloneAsync(Guid id, string newName, Guid organizationId, Guid? createdByUserId = null)
         {
             var original = await _repository.GetByIdAsync(id)
                 ?? throw new KeyNotFoundException("Jornada não encontrada.");
@@ -99,6 +100,7 @@ namespace WiseMonitor.Api.Services
             {
                 Id = Guid.NewGuid(),
                 OrganizationId = organizationId,
+                CreatedByUserId = createdByUserId,
                 Name = newName,
                 Description = original.Description,
                 ScheduleCode = original.ScheduleCode,

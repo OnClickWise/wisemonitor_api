@@ -17,11 +17,14 @@ namespace WiseMonitor.Api.Controllers
     public class ProductivityClassificationController : ControllerBase
     {
         private readonly IProductivityClassificationService _service;
+        private readonly IAccessScopeService _scopeService;
 
         public ProductivityClassificationController(
-            IProductivityClassificationService service)
+            IProductivityClassificationService service,
+            IAccessScopeService scopeService)
         {
             _service = service;
+            _scopeService = scopeService;
         }
 
         [HttpGet("team/{teamId:guid}")]
@@ -29,6 +32,11 @@ namespace WiseMonitor.Api.Controllers
             Guid teamId)
         {
             var organizationId = User.GetOrganizationId();
+
+            // Supervisor: só as equipes que administra.
+            var scope = await _scopeService.GetScopeAsync(User);
+            if (!scope.CanAccessTeam(teamId))
+                return NotFound();
 
             var items = await _service.GetByTeamAsync(
                 organizationId,
@@ -44,6 +52,10 @@ namespace WiseMonitor.Api.Controllers
             [FromBody] ProductivityClassificationSaveDTO dto)
         {
             var organizationId = User.GetOrganizationId();
+
+            var scope = await _scopeService.GetScopeAsync(User);
+            if (!scope.CanAccessTeam(teamId))
+                return NotFound();
 
             await _service.SaveAsync(
                 organizationId,

@@ -57,14 +57,11 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
 
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.7" />
-
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="9.0.4" />
 
     <!-- EMAIL -->
+    <!-- MimeKit vem junto com o MailKit -->
     <PackageReference Include="MailKit" Version="4.13.0" />
-
-    <PackageReference Include="MimeKit" Version="4.13.0" />
 
     <!-- ENV -->
     <PackageReference Include="DotNetEnv" Version="3.1.1" />
@@ -72,15 +69,11 @@
     <!-- IMAGES -->
     <PackageReference Include="SixLabors.ImageSharp" Version="3.1.11" />
 
-    <PackageReference Include="SixLabors.ImageSharp.Drawing" Version="2.1.7" />
-
     <!-- SWAGGER -->
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.4.0" />
 
     <!-- REPORTS (geração de PDF via Chromium headless) -->
     <PackageReference Include="PuppeteerSharp" Version="25.4.0" />
-
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.6" />
 
   </ItemGroup>
 

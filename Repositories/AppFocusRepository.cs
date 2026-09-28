@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using WiseMonitor.Api.Data;
+using WiseMonitor.Api.Helpers;
 using WiseMonitor.Api.Models;
 
 namespace WiseMonitor.Api.Repositories;
@@ -28,14 +29,24 @@ public class AppFocusRepository : IAppFocusRepository
     public async Task<IEnumerable<AppFocusEvent>> GetByOrganizationAndPeriodAsync(
     Guid organizationId,
     DateTime startDate,
-    DateTime endDate)
+    DateTime endDate,
+    IReadOnlyCollection<Guid>? userIds = null)
     {
-        return await _context.AppFocusEvents
+        // Dias inteiros: o front manda só datas, e no filtro "dia" start == end
+        // virava o intervalo 00:00–00:00 (ver ActivityPeriod).
+        var (from, to) = ActivityPeriod.Days(startDate, endDate);
+
+        var query = _context.AppFocusEvents
+            .AsNoTracking()
             .Where(e =>
                 e.OrganizationId == organizationId &&
-                e.StartTime >= startDate &&
-                e.StartTime <= endDate)
-            .AsNoTracking()
+                e.StartTime >= from &&
+                e.StartTime < to);
+
+        if (userIds != null)
+            query = query.Where(e => userIds.Contains(e.UserId));
+
+        return await query
             .OrderBy(e => e.StartTime)
             .ToListAsync();
     }

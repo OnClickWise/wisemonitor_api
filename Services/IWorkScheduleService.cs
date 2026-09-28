@@ -35,13 +35,13 @@ namespace WiseMonitor.Api.Services
 
     public interface IWorkScheduleService
     {
-        Task<WorkScheduleResponseDTO> CreateAsync(Guid organizationId, WorkScheduleCreateDTO dto);
+        Task<WorkScheduleResponseDTO> CreateAsync(Guid organizationId, WorkScheduleCreateDTO dto, Guid? createdByUserId = null);
         Task<IEnumerable<WorkScheduleResponseDTO>> GetAllAsync(Guid organizationId);
         Task<WorkScheduleResponseDTO?> GetByIdAsync(Guid id);
         Task<WorkScheduleResponseDTO?> UpdateAsync(Guid id, WorkScheduleUpdateDTO dto);
         Task<bool> DeleteAsync(Guid id);
-        Task<bool> AssignToUserAsync(AssignUserScheduleDTO dto);
-        Task<WorkScheduleResponseDTO> CloneAsync(Guid id, string newName, Guid organizationId);
+        Task<bool> AssignToUserAsync(AssignUserScheduleDTO dto, Guid organizationId);
+        Task<WorkScheduleResponseDTO> CloneAsync(Guid id, string newName, Guid organizationId, Guid? createdByUserId = null);
         Task<IEnumerable<WorkScheduleUserDTO>> GetUsersAsync(Guid scheduleId);
         Task<IEnumerable<WorkScheduleHistoryDTO>> GetUserHistoryAsync(Guid userId, Guid organizationId);
         Task<WorkScheduleCurrentDTO?> GetCurrentScheduleAsync(Guid userId, Guid organizationId);

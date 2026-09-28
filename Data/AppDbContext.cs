@@ -142,6 +142,25 @@ namespace WiseMonitor.Api.Data
                 !_tenant.IsActive || _tenant.IsSuperAdmin || e.OrganizationId == _tenant.OrganizationId);
 
             // ==============================
+            // Screenshots — índices das consultas quentes
+            // ==============================
+            // Sem eles, a listagem por org (polling das telas de dispositivos) e a limpeza
+            // das antigas a cada upload varriam a tabela inteira.
+            modelBuilder.Entity<Screenshot>(entity =>
+            {
+                entity.HasIndex(s => new { s.OrganizationId, s.CapturedAt });
+                entity.HasIndex(s => new { s.MonitoredUserId, s.DeviceId, s.CapturedAt });
+            });
+
+            // AppFocusEvents é a maior tabela (um registro por troca de janela) e não tinha
+            // índice nenhum: histórico por usuário e listagem por org faziam seq scan.
+            modelBuilder.Entity<AppFocusEvent>(entity =>
+            {
+                entity.HasIndex(e => new { e.UserId, e.StartTime });
+                entity.HasIndex(e => new { e.OrganizationId, e.StartTime });
+            });
+
+            // ==============================
             // Organization ↔ User
             // ==============================
             modelBuilder.Entity<Organization>(entity =>

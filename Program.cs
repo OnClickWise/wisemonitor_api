@@ -157,6 +157,7 @@ builder.Services.AddScoped<IEmailService,               EmailService>();
 builder.Services.AddScoped<IJwtService,                 JwtService>();
 builder.Services.AddScoped<IRefreshTokenService,        RefreshTokenService>();
 builder.Services.AddScoped<IUserService,                UserService>();
+builder.Services.AddScoped<IAccessScopeService,         AccessScopeService>();
 builder.Services.AddScoped<IOrganizationService,        OrganizationService>();
 builder.Services.AddScoped<IDeviceService,              DeviceService>();
 builder.Services.AddScoped<IScreenshotService,          ScreenshotService>();
@@ -299,6 +300,7 @@ builder.Services.AddAuthorization(options =>
         Permissions.UsersCreate,       Permissions.UsersEdit,       Permissions.UsersDelete,   Permissions.UsersView,
         Permissions.DepartmentsCreate, Permissions.DepartmentsEdit, Permissions.DepartmentsDelete,
         Permissions.TeamsCreate,       Permissions.TeamsEdit,       Permissions.TeamsDelete,
+        Permissions.SchedulesManage,
         Permissions.ProjectsCreate,    Permissions.ProjectsEdit,    Permissions.ProjectsDelete,
         Permissions.ReportsView,       Permissions.ReportsExport,
         Permissions.ScreenshotsView,   Permissions.ScreenshotsDelete,
@@ -397,6 +399,8 @@ if (autoMigrate)
 
         if (db.Database.CanConnect())
         {
+            // Criação de índice em tabela grande passa fácil dos 30s padrão.
+            db.Database.SetCommandTimeout(TimeSpan.FromMinutes(10));
             db.Database.Migrate();
             Log.Information("[DB] Banco atualizado com sucesso");
         }

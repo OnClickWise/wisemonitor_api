@@ -24,6 +24,7 @@ namespace WiseMonitor.Api.Controllers
         private readonly IAuditService _auditService;
         private readonly IHttpContextAccessor _httpContextAccessor;
         private readonly IEntitlementService _entitlements;
+        private readonly IAccessScopeService _scopeService;
         private readonly ILogger<UserController> _logger;
 
         public UserController(
@@ -31,12 +32,14 @@ namespace WiseMonitor.Api.Controllers
             IAuditService auditService,
             IHttpContextAccessor httpContextAccessor,
             IEntitlementService entitlements,
+            IAccessScopeService scopeService,
             ILogger<UserController> logger)
         {
             _userService = userService;
             _auditService = auditService;
             _httpContextAccessor = httpContextAccessor;
             _entitlements = entitlements;
+            _scopeService = scopeService;
             _logger = logger;
         }
 
@@ -128,6 +131,12 @@ namespace WiseMonitor.Api.Controllers
             try
             {
                 var orgId = GetOrganizationId();
+
+                // Supervisor só enxerga os usuários das equipes que administra.
+                var scope = await _scopeService.GetScopeAsync(User);
+                if (!scope.CanAccessUser(id))
+                    return NotFound();
+
                 var user = await _userService.GetUserByIdAsync(id, orgId);
                 return user == null ? NotFound() : Ok(user);
             }

@@ -170,6 +170,7 @@ namespace WiseMonitor.Api.Services
             };
 
             _context.Organizations.Add(org);
+            _context.WorkSchedules.AddRange(DefaultWorkSchedules.CreateFor(org.Id));
             await _context.SaveChangesAsync(ct);
 
             var admin = new User

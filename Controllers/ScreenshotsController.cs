@@ -20,6 +20,7 @@ namespace WiseMonitor.Api.Controllers
         private readonly ILiveMonitoringService _liveService;
         private readonly IDeviceService _deviceService;
         private readonly IEntitlementService _entitlements;
+        private readonly IAccessScopeService _scopeService;
         private readonly ILogger<ScreenshotsController> _logger;
 
         public ScreenshotsController(
@@ -27,12 +28,14 @@ namespace WiseMonitor.Api.Controllers
             ILiveMonitoringService liveService,
             IDeviceService deviceService,
             IEntitlementService entitlements,
+            IAccessScopeService scopeService,
             ILogger<ScreenshotsController> logger)
         {
             _screenshotService = screenshotService;
             _liveService = liveService;
             _deviceService = deviceService;
             _entitlements = entitlements;
+            _scopeService = scopeService;
             _logger = logger;
         }
 
@@ -134,6 +137,21 @@ namespace WiseMonitor.Api.Controllers
             try 
             {
                 var shots = await _screenshotService.GetAllByOrganizationAsync(organizationId);
+
+                // Supervisor: só máquinas de quem está nas equipes que administra. Usa o
+                // usuário efetivo da máquina (atribuição manual tem prioridade).
+                var scope = await _scopeService.GetScopeAsync(User);
+                if (scope.IsRestricted)
+                {
+                    var assigned = await _scopeService.GetAssignedDeviceUsersAsync(organizationId);
+                    shots = shots
+                        .Where(s => scope.CanAccessUser(
+                            s.DeviceId != null && assigned.TryGetValue(s.DeviceId, out var owner)
+                                ? owner
+                                : s.MonitoredUserId))
+                        .ToList();
+                }
+
                 var proto = Request.Headers["X-Forwarded-Proto"].FirstOrDefault() ?? Request.Scheme;
                 var baseUrl = $"{proto}://{Request.Host}";
 
@@ -160,6 +178,11 @@ namespace WiseMonitor.Api.Controllers
         [RequiresFeature(Features.Screenshots)]
         public async Task<IActionResult> GetLast(Guid userId)
         {
+            // 🔒 Usuário da mesma organização e dentro do escopo do caller
+            // (supervisor: só membros das equipes que administra)
+            if (!await _scopeService.CanAccessUserAsync(User, userId))
+                return Forbid();
+
             var screenshot = await _screenshotService.GetLastScreenshotByUserAsync(userId);
 
             if (screenshot == null)
@@ -178,6 +201,11 @@ namespace WiseMonitor.Api.Controllers
             var screenshot = await _screenshotService.GetByIdAsync(id);
             if (screenshot == null)
                 return NotFound();
+
+            // Cada captura tem id próprio e nunca é alterada: o navegador pode reaproveitar
+            // em vez de baixar de novo a cada refresh das telas de dispositivos. "private"
+            // para proxies/CDNs não guardarem imagens de tela dos clientes.
+            Response.Headers.CacheControl = "private, max-age=86400, immutable";
 
             return File(
                 screenshot.ImageData,

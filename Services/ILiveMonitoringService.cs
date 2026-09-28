@@ -18,8 +18,12 @@ namespace WiseMonitor.Api.Services
         void UpdateDeviceUser(string deviceId, string userId, string username);
 
         // --- Controle de Admins conectados (visualizadores) com sessionId ---
-        void RegisterAdmin(string orgId, string sessionId, WebSocket adminSocket);
+        // allowedUserIds: escopo da conexão (supervisor); null = organização inteira.
+        void RegisterAdmin(string orgId, string sessionId, WebSocket adminSocket,
+            IReadOnlySet<string>? allowedUserIds = null);
         void UnregisterAdmin(string orgId, string sessionId);
+        bool CanSessionSeeDevice(string sessionId, string deviceId);
+        IReadOnlyCollection<MonitoringMessageDto> GetAllLiveDevicesForSession(string orgId, string sessionId);
 
         // --- Controle de "quem está assistindo" cada device (bookkeeping usado pelo dashboard) ---
         void AddWatcher(string deviceId, string sessionId);
@@ -44,7 +48,8 @@ namespace WiseMonitor.Api.Services
         // --- Leitura de estado/cache ---
         IReadOnlyList<MonitoringMessageDto> GetCachedMessages(string orgId);
         MonitoringMessageDto? GetLiveDevice(string deviceId);
-        IReadOnlyCollection<MonitoringMessageDto> GetAllLiveDevices();
+        // Sempre por organização: a lista crua misturava devices de todos os tenants.
+        IReadOnlyCollection<MonitoringMessageDto> GetAllLiveDevices(string orgId);
 
         // --- Presença (online/offline real) ---
         /// <summary>Desligamento anunciado pelo agent: reflete offline na hora.</summary>

@@ -22,6 +22,7 @@ namespace WiseMonitor.Api.Services
         // 🟡 UPDATE
         // ===============================
         Task UpdateAsync(Guid teamId, UpdateTeamDTO dto, Guid organizationId);
+        Task UpdateWorkScheduleAsync(Guid teamId, Guid? workScheduleId, Guid organizationId);
 
         // ===============================
         // 🔴 DELETE

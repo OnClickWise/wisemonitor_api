@@ -116,7 +116,31 @@ namespace WiseMonitor.Api.Services
         {
             var teams = await _teamRepo.GetAllAsync(organizationId);
 
-            return teams.Select(t => new TeamResponseDTO
+            return teams.Select(MapToDTO).ToList();
+        }
+
+        public async Task<TeamResponseDTO?> GetByIdAsync(Guid teamId, Guid organizationId)
+        {
+            var team = await _teamRepo.GetByIdAsync(teamId, organizationId);
+            return team == null ? null : MapToDTO(team);
+        }
+
+        // Troca só a jornada padrão da equipe, sem tocar em nome, membros ou
+        // administradores — é o que o supervisor pode editar na própria equipe.
+        public async Task UpdateWorkScheduleAsync(Guid teamId, Guid? workScheduleId, Guid organizationId)
+        {
+            var team = await _teamRepo.GetByIdAsync(teamId, organizationId);
+
+            if (team == null)
+                throw new KeyNotFoundException("Equipe não encontrada.");
+
+            team.DefaultWorkScheduleId = workScheduleId;
+            await _teamRepo.UpdateAsync(team);
+        }
+
+        private static TeamResponseDTO MapToDTO(Team t)
+        {
+            return new TeamResponseDTO
             {
                 Id = t.Id,
                 Name = t.Name,
@@ -142,12 +166,7 @@ namespace WiseMonitor.Api.Services
                         FullName = m.User.FullName,
                         Role = m.User.Role
                     }).ToList()
-            }).ToList();
-        }
-
-        public Task<TeamResponseDTO?> GetByIdAsync(Guid teamId, Guid organizationId)
-        {
-            throw new NotImplementedException();
+            };
         }
 
         public async Task RemoveMemberAsync(Guid teamId, Guid userId, Guid organizationId)

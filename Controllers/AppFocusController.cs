@@ -20,13 +20,16 @@ namespace WiseMonitor.Api.Controllers;
 public class AppFocusController : ControllerBase
 {
     private readonly IAppFocusService _service;
+    private readonly IAccessScopeService _scopeService;
     private readonly ILogger<AppFocusController> _logger;
 
     public AppFocusController(
         IAppFocusService service,
+        IAccessScopeService scopeService,
         ILogger<AppFocusController> logger)
     {
         _service = service;
+        _scopeService = scopeService;
         _logger = logger;
     }
 
@@ -79,9 +82,24 @@ public class AppFocusController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetAll(
     [FromQuery] DateTime startDate,
-    [FromQuery] DateTime endDate)
+    [FromQuery] DateTime? endDate,
+    [FromQuery] Guid? userId)
     {
         var organizationId = User.GetOrganizationId();
+        if (organizationId == Guid.Empty)
+            return Forbid();
+
+        if (startDate == default) startDate = DateTime.UtcNow;
+
+        // Supervisor: só os usuários das equipes que administra — filtrado no banco.
+        var scope = await _scopeService.GetScopeAsync(User);
+        IReadOnlyCollection<Guid>? userIds = scope.IsRestricted ? scope.UserIds.ToList() : null;
+        if (userId.HasValue)
+        {
+            if (!await _scopeService.CanAccessUserAsync(User, userId.Value))
+                return Forbid();
+            userIds = new[] { userId.Value };
+        }
 
         _logger.LogInformation(
             "📊 [API] Listando AppFocus | Org={OrgId} | Período={Start} até {End}",
@@ -93,7 +111,8 @@ public class AppFocusController : ControllerBase
         var events = await _service.GetAllAsync(
             organizationId,
             startDate,
-            endDate
+            endDate ?? startDate,
+            userIds
         );
 
         return Ok(events);
@@ -114,7 +133,8 @@ public class AppFocusController : ControllerBase
         var result = await _service
             .GetByIdAsync(id, organizationId);
 
-        if (result == null)
+        var scope = await _scopeService.GetScopeAsync(User);
+        if (result == null || !scope.CanAccessUser(result.UserId))
         {
             _logger.LogWarning(
                 "⚠️ [API] AppFocus não encontrado | EventId={EventId}",
@@ -140,6 +160,9 @@ public class AppFocusController : ControllerBase
     {
         var organizationId = User.GetOrganizationId();
 
+        if (!await CanAccessEventAsync(id, organizationId))
+            return NotFound();
+
         await _service
             .UpdateAsync(id, dto, organizationId);
 
@@ -156,7 +179,11 @@ public class AppFocusController : ControllerBase
         [FromQuery] DateTime start, 
         [FromQuery] DateTime? end) // 'end' é opcional (nullable)
     {
-        
+        // 🔒 Usuário da mesma organização e dentro do escopo do caller
+        // (supervisor: só membros das equipes que administra)
+        if (!await _scopeService.CanAccessUserAsync(User, userId))
+            return Forbid();
+
         if (start == default) start = DateTime.UtcNow;
 
         var finalEnd = end ?? start;
@@ -178,10 +205,23 @@ public class AppFocusController : ControllerBase
     {
         var organizationId = User.GetOrganizationId();
 
+        if (!await CanAccessEventAsync(id, organizationId))
+            return NotFound();
+
         await _service
             .DeleteAsync(id, organizationId);
 
         return NoContent();
+    }
+
+    private async Task<bool> CanAccessEventAsync(Guid id, Guid organizationId)
+    {
+        var scope = await _scopeService.GetScopeAsync(User);
+        if (!scope.IsRestricted)
+            return true;
+
+        var existing = await _service.GetByIdAsync(id, organizationId);
+        return existing != null && scope.CanAccessUser(existing.UserId);
     }
 
     // ============================================================

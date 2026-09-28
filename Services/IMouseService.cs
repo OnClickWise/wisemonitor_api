@@ -18,6 +18,8 @@ namespace WiseMonitor.Api.Services
         Task<IEnumerable<MouseSession>> GetHistoryAsync(
             Guid userId, DateTime start, DateTime end);
 
+        Task<IEnumerable<MouseSession>> GetByOrganizationAsync(
+            Guid organizationId, DateTime start, DateTime end, IReadOnlyCollection<Guid>? userIds);
         Task<MouseSummaryDTO> GetSummaryAsync(
             Guid userId, DateTime start, DateTime end);
 

@@ -134,6 +134,12 @@ namespace WiseMonitor.Api.Services
                 .OrderBy(k => k.StartAt)
                 .ToListAsync();
 
+            // O mesmo evento/sessão se repete no contexto de vários segmentos de ~10s;
+            // o front só usa nome, título e total de teclas. Ícone em Base64 e lista de
+            // palavras multiplicavam o tamanho da resposta. Entidades são AsNoTracking.
+            foreach (var e in appFocusEvents) e.IconBase64 = null;
+            foreach (var k in keyboardSessions) k.Words = new List<KeyboardWord>();
+
             var results = new List<VideoSegmentHistoryItemDTO>(segments.Count);
 
             foreach (var segment in segments)
@@ -185,7 +191,8 @@ namespace WiseMonitor.Api.Services
             from = DateTime.SpecifyKind(from, DateTimeKind.Utc);
             to = DateTime.SpecifyKind(to, DateTimeKind.Utc);
 
-            var segments = (await _repository.GetHistoryAsync(deviceId, from, to))
+            // Precisa dos bytes de cada segmento — a listagem normal vem só com metadados.
+            var segments = (await _repository.GetHistoryWithDataAsync(deviceId, from, to))
                 .Where(segment => segment.EndedAt >= from && segment.StartedAt <= to)
                 .OrderBy(segment => segment.StartedAt)
                 .ToList();

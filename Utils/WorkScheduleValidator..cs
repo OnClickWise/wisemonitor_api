@@ -30,17 +30,25 @@ namespace WiseMonitor.Api.Utils
 
             foreach (var rule in rules)
             {
-                if (rule.Day < 0 || rule.Day > 6)
+                // WorkDay vai de 1 (segunda) a 7 (domingo); o limite antigo (0–6)
+                // recusava domingo.
+                if (rule.Day < 1 || rule.Day > 7)
                     throw new ArgumentException("Invalid day of week.");
 
-                if (rule.StartTimeMinutes >= rule.EndTimeMinutes)
+                // Jornada que passa da meia-noite (ex.: 15:40 às 00:00) termina "antes"
+                // de começar no relógio; o fim conta como do dia seguinte.
+                var endMinutes = rule.CrossesMidnight && rule.EndTimeMinutes <= rule.StartTimeMinutes
+                    ? rule.EndTimeMinutes + 24 * 60
+                    : rule.EndTimeMinutes;
+
+                if (rule.StartTimeMinutes >= endMinutes)
                     throw new ArgumentException("Start time must be before end time.");
 
                 if (rule.BreakDurationMinutes < 0)
                     throw new ArgumentException("Break duration cannot be negative.");
 
                 var workDuration =
-                    rule.EndTimeMinutes - rule.StartTimeMinutes;
+                    endMinutes - rule.StartTimeMinutes;
 
                 if (rule.BreakDurationMinutes >= workDuration)
                     throw new ArgumentException("Break duration exceeds work duration.");

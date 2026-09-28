@@ -55,15 +55,18 @@ namespace WiseMonitor.Api.Repositories
                 .ToListAsync();
         }
 
-        public async Task<bool> AssignScheduleToUserAsync(Guid userId, Guid scheduleId)
+        public async Task<bool> AssignScheduleToUserAsync(Guid userId, Guid scheduleId, Guid organizationId)
         {
             var existingSchedules = _context.UserWorkSchedules
                 .Where(x => x.UserId == userId);
 
             _context.UserWorkSchedules.RemoveRange(existingSchedules);
 
+            // OrganizationId não era preenchido, e a jornada atual/histórico filtram
+            // por ele — a atribuição ficava invisível para o usuário.
             var userSchedule = new UserWorkSchedule
             {
+                OrganizationId = organizationId,
                 UserId = userId,
                 WorkScheduleId = scheduleId
             };

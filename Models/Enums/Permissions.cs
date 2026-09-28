@@ -18,6 +18,9 @@ namespace WiseMonitor.Api.Models.Enums
         public const string TeamsEdit   = "teams.edit";
         public const string TeamsDelete = "teams.delete";
 
+        // Work schedules (jornadas)
+        public const string SchedulesManage = "schedules.manage";
+
         // Projects
         public const string ProjectsCreate = "projects.create";
         public const string ProjectsEdit   = "projects.edit";

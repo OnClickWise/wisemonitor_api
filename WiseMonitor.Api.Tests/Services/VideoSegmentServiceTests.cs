@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using WiseMonitor.Api.Data;
@@ -22,7 +23,9 @@ file class FakeLiveMonitoringService : ILiveMonitoringService
     public void UpdateDevice(string deviceId, string orgId, string username, string department, string thumbnailUrl, string fullScreenUrl, string type = "screenshot", string payload = "") { }
     public void RegisterOrUpdateDevice(WiseMonitor.Api.DTOs.LiveDeviceUpdateDTO dto) { }
     public void UpdateDeviceUser(string deviceId, string userId, string username) { }
-    public void RegisterAdmin(string orgId, string sessionId, System.Net.WebSockets.WebSocket adminSocket) { }
+    public void RegisterAdmin(string orgId, string sessionId, System.Net.WebSockets.WebSocket adminSocket, IReadOnlySet<string>? allowedUserIds = null) { }
+    public bool CanSessionSeeDevice(string sessionId, string deviceId) => true;
+    public IReadOnlyCollection<WiseMonitor.Api.DTOs.MonitoringMessageDto> GetAllLiveDevicesForSession(string orgId, string sessionId) => Array.Empty<WiseMonitor.Api.DTOs.MonitoringMessageDto>();
     public void UnregisterAdmin(string orgId, string sessionId) { }
     public void AddWatcher(string deviceId, string sessionId) { }
     public void RemoveWatcher(string deviceId, string sessionId) { }
@@ -34,7 +37,7 @@ file class FakeLiveMonitoringService : ILiveMonitoringService
     public IReadOnlyCollection<string> BroadcastExpiredDevices() => Array.Empty<string>();
     public IReadOnlyList<WiseMonitor.Api.DTOs.MonitoringMessageDto> GetCachedMessages(string orgId) => Array.Empty<WiseMonitor.Api.DTOs.MonitoringMessageDto>();
     public WiseMonitor.Api.DTOs.MonitoringMessageDto? GetLiveDevice(string deviceId) => null;
-    public IReadOnlyCollection<WiseMonitor.Api.DTOs.MonitoringMessageDto> GetAllLiveDevices() => Array.Empty<WiseMonitor.Api.DTOs.MonitoringMessageDto>();
+    public IReadOnlyCollection<WiseMonitor.Api.DTOs.MonitoringMessageDto> GetAllLiveDevices(string orgId) => Array.Empty<WiseMonitor.Api.DTOs.MonitoringMessageDto>();
     public Task BroadcastFrameAsync(string deviceId, WiseMonitor.Api.DTOs.MonitoringMessageDto frame) => Task.CompletedTask;
 
     public Task NotifyNewSegmentAsync(string deviceId, string orgId, Guid segmentId, DateTime startedAt, DateTime endedAt)
@@ -50,6 +53,20 @@ public class VideoSegmentServiceTests
         new(new DbContextOptionsBuilder<AppDbContext>().UseInMemoryDatabase(name).Options,
             new FakeTenantContext { IsActive = false });
 
+    // SQLite em memória para o que passa pela retenção: ela apaga direto no banco
+    // (ExecuteDeleteAsync), que o provider InMemory não suporta. Cada chamada = banco novo.
+    private static AppDbContext CreateRelationalDb()
+    {
+        var connection = new SqliteConnection("DataSource=:memory:");
+        connection.Open();
+
+        var db = new AppDbContext(
+            new DbContextOptionsBuilder<AppDbContext>().UseSqlite(connection).Options,
+            new FakeTenantContext { IsActive = false });
+        db.Database.EnsureCreated();
+        return db;
+    }
+
     private static IConfiguration CreateConfig(double retentionHours = 4) =>
         new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
@@ -64,7 +81,7 @@ public class VideoSegmentServiceTests
     [Fact]
     public async Task UpsertAsync_PrunesSegmentsOlderThanRetentionWindow()
     {
-        var db = CreateDb(Guid.NewGuid().ToString());
+        var db = CreateRelationalDb();
         var repo = new VideoSegmentRepository(db);
         var orgId = Guid.NewGuid();
         var deviceId = "device-1";
@@ -100,7 +117,7 @@ public class VideoSegmentServiceTests
     [Fact]
     public async Task UpsertAsync_KeepsSegmentsWithinRetentionWindow()
     {
-        var db = CreateDb(Guid.NewGuid().ToString());
+        var db = CreateRelationalDb();
         var repo = new VideoSegmentRepository(db);
         var orgId = Guid.NewGuid();
         var deviceId = "device-1";
@@ -197,13 +214,15 @@ public class VideoSegmentServiceTests
 
         Assert.Single(item.Context.KeyboardSessions);
         Assert.Equal(42, item.Context.KeyboardSessions[0].TotalKeystrokes);
-        Assert.Equal(new[] { "hello", "world" }, item.Context.KeyboardSessions[0].TopWords);
+        // Palavras não vêm no contexto do vídeo (o front só usa o total de teclas);
+        // o ranking de palavras continua na API de teclado.
+        Assert.Empty(item.Context.KeyboardSessions[0].TopWords);
     }
 
     [Fact]
     public async Task SaveSegmentAsync_NotifiesLiveMonitoringService()
     {
-        var db = CreateDb(Guid.NewGuid().ToString());
+        var db = CreateRelationalDb();
         var fakeLive = new FakeLiveMonitoringService();
         var service = new VideoSegmentService(new VideoSegmentRepository(db), db, fakeLive, CreateConfig());
 

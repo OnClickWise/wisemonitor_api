@@ -96,6 +96,8 @@ namespace WiseMonitor.Api.Services
                 _context.Organizations.Add(organization);
                 _context.Users.Add(adminUser);
 
+                _context.WorkSchedules.AddRange(DefaultWorkSchedules.CreateFor(organization.Id));
+
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
             }

@@ -6,8 +6,10 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using WiseMonitor.Api.Data;
 using WiseMonitor.Api.Helpers;
 using WiseMonitor.Api.Services;
 
@@ -83,13 +85,21 @@ namespace WiseMonitor.Api.Middlewares
 
             var liveService = context.RequestServices.GetRequiredService<ILiveMonitoringService>();
 
+            // Supervisor: a conexão só recebe (e só pode assistir) as máquinas de quem
+            // está nas equipes que ele administra.
+            var scopeService = context.RequestServices.GetRequiredService<IAccessScopeService>();
+            var scope = await scopeService.GetScopeAsync(principal!);
+            IReadOnlySet<string>? allowedUserIds = scope.IsRestricted
+                ? scope.UserIds.Select(id => id.ToString()).ToHashSet()
+                : null;
+
             using var socket = await context.WebSockets.AcceptWebSocketAsync();
             _logger.LogInformation("[Monitor WS] Admin conectado | Org={OrgId} | Session={SessionId}", orgId, sessionId);
 
-            liveService.RegisterAdmin(orgId, sessionId, socket);
+            liveService.RegisterAdmin(orgId, sessionId, socket, allowedUserIds);
 
-            // Push current state immediately on connect
-            var current = liveService.GetAllLiveDevices();
+            // Estado atual na conexão — só devices da própria org (e do escopo da sessão)
+            var current = liveService.GetAllLiveDevicesForSession(orgId, sessionId);
             await SendAsync(socket, new { eventType = "update", payload = current });
 
             var buffer = new byte[512];
@@ -112,7 +122,20 @@ namespace WiseMonitor.Api.Middlewares
                         switch (msg.Type.ToLowerInvariant())
                         {
                             case "watch":
-                                liveService.AddWatcher(msg.DeviceId, sessionId);
+                                // Só assiste device da própria organização e dentro do escopo da sessão.
+                                var watched = liveService.GetLiveDevice(msg.DeviceId);
+                                var canWatch = watched != null
+                                    ? (watched.OrgId ?? "default") == orgId &&
+                                      liveService.CanSessionSeeDevice(sessionId, msg.DeviceId)
+                                    // Ainda fora do cache ao vivo: vale o cadastro do device no banco.
+                                    : Guid.TryParse(msg.DeviceId, out var deviceGuid) &&
+                                      await context.RequestServices.GetRequiredService<AppDbContext>().Devices
+                                          .AsNoTracking()
+                                          .AnyAsync(d => d.Id == deviceGuid && d.OrganizationId == orgGuid) &&
+                                      await scopeService.CanAccessDeviceAsync(principal!, msg.DeviceId);
+
+                                if (canWatch)
+                                    liveService.AddWatcher(msg.DeviceId, sessionId);
                                 break;
                             case "unwatch":
                                 liveService.RemoveWatcher(msg.DeviceId, sessionId);

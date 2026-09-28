@@ -25,19 +25,22 @@ namespace WiseMonitor.Api.Controllers
         private readonly IUserService _userService;
         private readonly IScreenshotService _screenshotService;
         private readonly ITeamRepository _teamRepo;
+        private readonly IAccessScopeService _scopeService;
 
         public DevicesController(
             IDeviceService deviceService,
             ILiveMonitoringService liveService,
             IUserService userService,
             IScreenshotService screenshotService,
-            ITeamRepository teamRepo)
+            ITeamRepository teamRepo,
+            IAccessScopeService scopeService)
         {
             _deviceService = deviceService;
             _liveService = liveService;
             _userService = userService;
             _screenshotService = screenshotService;
             _teamRepo = teamRepo;
+            _scopeService = scopeService;
         }
 
         // Helper para pegar OrgId do token/claims
@@ -93,8 +96,19 @@ namespace WiseMonitor.Api.Controllers
             var allowedUserIds = await GetAllowedUserIdsAsync(orgId);
             if (allowedUserIds != null)
             {
+                // Usuário efetivo: o atribuído manualmente tem prioridade sobre o
+                // detectado pela última screenshot da máquina.
+                var shotUsers = (await _screenshotService.GetAllByOrganizationAsync(orgId))
+                    .Where(s => s.DeviceId != null)
+                    .ToDictionary(s => s.DeviceId!, s => s.MonitoredUserId);
+
                 devices = devices
-                    .Where(d => d.UserId.HasValue && allowedUserIds.Contains(d.UserId.Value))
+                    .Where(d =>
+                    {
+                        var effective = d.UserId ??
+                            (shotUsers.TryGetValue(d.Id.ToString(), out var u) ? u : (Guid?)null);
+                        return effective.HasValue && allowedUserIds.Contains(effective.Value);
+                    })
                     .ToList();
             }
 
@@ -177,6 +191,10 @@ namespace WiseMonitor.Api.Controllers
         public async Task<IActionResult> GetById(Guid id)
         {
             var orgId = GetOrgId();
+
+            if (!await _scopeService.CanAccessDeviceAsync(User, id.ToString()))
+                return NotFound();
+
             var device = await _deviceService.GetDeviceByIdAsync(id, orgId);
 
             if (device == null)
@@ -252,6 +270,11 @@ namespace WiseMonitor.Api.Controllers
                 return BadRequest(ModelState);
 
             var orgId = GetOrgId();
+
+            // Supervisor só visualiza — reatribuir máquina mudaria quem entra no escopo dele.
+            if (await GetAllowedUserIdsAsync(orgId) != null)
+                return Forbid();
+
             var existing = await _deviceService.GetDeviceByIdAsync(id, orgId);
             if (existing == null)
                 return NotFound();
@@ -289,6 +312,10 @@ namespace WiseMonitor.Api.Controllers
         public async Task<IActionResult> Delete(Guid id)
         {
             var orgId = GetOrgId();
+
+            if (await GetAllowedUserIdsAsync(orgId) != null)
+                return Forbid();
+
             var success = await _deviceService.DeleteDeviceAsync(id, orgId);
 
             if (!success)

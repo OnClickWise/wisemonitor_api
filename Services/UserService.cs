@@ -37,14 +37,25 @@ namespace WiseMonitor.Api.Services
             // E-mail é usado para login (AuthService resolve o usuário só por e-mail,
             // sem filtrar por organização), então precisa ser único na plataforma
             // inteira — não só dentro da organização — senão o login fica ambíguo.
-            var duplicate = await _context.Users
+            if (await _context.Users
                 .AsNoTracking()
-                .AnyAsync(u => u.Email.ToLower() == email
-                    && u.FirstName.ToLower() == firstName.ToLower()
-                    && u.LastName.ToLower() == lastName.ToLower());
+                .AnyAsync(u => u.Email.ToLower() == email))
+            {
+                throw new InvalidOperationException("Já existe um usuário cadastrado com este e-mail.");
+            }
 
-            if (duplicate)
-                throw new InvalidOperationException("Já existe um usuário cadastrado com este nome completo e e-mail.");
+            // Nome duplicado só importa dentro da mesma organização — nomes
+            // repetidos entre empresas diferentes são normais e não devem ser
+            // bloqueados.
+            if (await _context.Users
+                .AsNoTracking()
+                .AnyAsync(u =>
+                    u.OrganizationId == organizationId &&
+                    u.FirstName.ToLower() == firstName.ToLower() &&
+                    u.LastName.ToLower() == lastName.ToLower()))
+            {
+                throw new InvalidOperationException("Já existe um usuário cadastrado com este nome.");
+            }
 
             var user = new User
             {

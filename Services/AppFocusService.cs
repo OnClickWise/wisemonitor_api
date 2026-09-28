@@ -59,7 +59,8 @@ public class AppFocusService : IAppFocusService
     public async Task<IEnumerable<AppFocusEventResponseDTO>> GetAllAsync(
     Guid organizationId,
     DateTime startDate,
-    DateTime endDate)
+    DateTime endDate,
+    IReadOnlyCollection<Guid>? userIds = null)
     {
         _logger.LogInformation(
             "📊 [Service] Buscando AppFocus | Org={OrgId} | Período={Start} até {End}",
@@ -67,18 +68,24 @@ public class AppFocusService : IAppFocusService
             startDate,
             endDate);
 
-        var events = await _repository.GetByOrganizationAndPeriodAsync(
+        var events = (await _repository.GetByOrganizationAndPeriodAsync(
             organizationId,
             startDate,
-            endDate);
+            endDate,
+            userIds)).ToList();
 
         _logger.LogInformation(
             "📈 [Service] {Count} eventos encontrados",
-            events.Count());
+            events.Count);
+
+        // Ícone uma vez por programa (o front redistribui) — mesma regra do histórico por usuário.
+        StripRepeatedIcons(events);
 
         return events.Select(e => new AppFocusEventResponseDTO
         {
             Id = e.Id,
+            UserId = e.UserId,
+            DeviceId = e.DeviceId,
             ApplicationName = e.ApplicationName,
             ProcessName = e.ProcessName,
             WindowTitle = e.WindowTitle,
@@ -98,8 +105,31 @@ public class AppFocusService : IAppFocusService
     public async Task<IEnumerable<AppFocusEvent>> GetHistoryAsync(Guid userId, DateTime start, DateTime end)
     {
         // O Service (GetHistoryAsync) chama o Repository (GetByUserDateRangeAsync)
-        return await _repository.GetByUserDateRangeAsync(userId, start, end);
+        var events = await _repository.GetByUserDateRangeAsync(userId, start, end);
+        StripRepeatedIcons(events);
+        return events;
     }
+
+    // O mesmo ícone em Base64 vinha repetido em cada evento do programa (milhares por dia),
+    // e era a maior parte do payload. Mantém só na primeira ocorrência de cada programa;
+    // o frontend (getAppFocusEventsByUser) redistribui para os demais eventos.
+    // Seguro porque o repositório devolve as entidades com AsNoTracking.
+    private static void StripRepeatedIcons(IEnumerable<AppFocusEvent> events)
+    {
+        var withIcon = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var e in events)
+        {
+            if (string.IsNullOrEmpty(e.IconBase64))
+                continue;
+
+            var key = IconKey(e);
+            if (!withIcon.Add(key))
+                e.IconBase64 = null;
+        }
+    }
+
+    private static string IconKey(AppFocusEvent e) =>
+        !string.IsNullOrWhiteSpace(e.ProcessName) ? e.ProcessName : e.ApplicationName;
 
     // ============================================================
     // GET BY ID
@@ -119,6 +149,8 @@ public class AppFocusService : IAppFocusService
         return new AppFocusEventResponseDTO
         {
             Id = e.Id,
+            UserId = e.UserId,
+            DeviceId = e.DeviceId,
             ApplicationName = e.ApplicationName,
             ProcessName = e.ProcessName,
             WindowTitle = e.WindowTitle,

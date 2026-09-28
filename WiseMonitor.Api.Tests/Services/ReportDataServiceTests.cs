@@ -27,7 +27,7 @@ class FakeAppFocusService : IAppFocusService
         => Task.FromResult(Events.Where(e => e.UserId == userId));
 
     public Task RegisterEventAsync(AppFocusEventCreateDTO dto, Guid userId, Guid organizationId) => throw new NotImplementedException();
-    public Task<IEnumerable<AppFocusEventResponseDTO>> GetAllAsync(Guid organizationId, DateTime startDate, DateTime endDate) => throw new NotImplementedException();
+    public Task<IEnumerable<AppFocusEventResponseDTO>> GetAllAsync(Guid organizationId, DateTime startDate, DateTime endDate, IReadOnlyCollection<Guid>? userIds = null) => throw new NotImplementedException();
     public Task<AppFocusEventResponseDTO?> GetByIdAsync(Guid id, Guid organizationId) => throw new NotImplementedException();
     public Task UpdateAsync(Guid id, AppFocusEventUpdateDTO dto, Guid organizationId) => throw new NotImplementedException();
     public Task DeleteAsync(Guid id, Guid organizationId) => throw new NotImplementedException();
@@ -43,6 +43,7 @@ class FakeTeamService : ITeamService
     public Task CreateAsync(CreateTeamDTO dto, Guid organizationId) => throw new NotImplementedException();
     public Task<TeamResponseDTO?> GetByIdAsync(Guid teamId, Guid organizationId) => throw new NotImplementedException();
     public Task UpdateAsync(Guid teamId, UpdateTeamDTO dto, Guid organizationId) => throw new NotImplementedException();
+    public Task UpdateWorkScheduleAsync(Guid teamId, Guid? workScheduleId, Guid organizationId) => throw new NotImplementedException();
     public Task DeleteAsync(Guid teamId, Guid organizationId) => throw new NotImplementedException();
     public Task AddMemberAsync(Guid teamId, Guid userId, Guid organizationId) => throw new NotImplementedException();
     public Task RemoveMemberAsync(Guid teamId, Guid userId, Guid organizationId) => throw new NotImplementedException();

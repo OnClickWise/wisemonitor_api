@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using WiseMonitor.Api.DTOs;
+using WiseMonitor.Api.Helpers;
 using WiseMonitor.Api.Models;
 using WiseMonitor.Api.Data;
 
@@ -30,17 +31,37 @@ namespace WiseMonitor.Api.Repositories
                 .FirstOrDefaultAsync(x => x.Id == id && x.UserId == userId);
         }
 
+        // Sessão que cruza o período também entra (ver KeyboardRepository.InPeriod).
+        private IQueryable<MouseSession> InPeriod(DateTime start, DateTime end)
+        {
+            var (from, to) = ActivityPeriod.Days(start, end);
+            from = DateTime.SpecifyKind(from, DateTimeKind.Utc);
+            to = DateTime.SpecifyKind(to, DateTimeKind.Utc);
+
+            return _context.MouseSessions
+                .AsNoTracking()
+                .Where(x => x.StartAt < to && x.EndAt >= from);
+        }
+
         public async Task<IEnumerable<MouseSession>> GetHistoryAsync(
             Guid userId, DateTime start, DateTime end)
         {
-            start = DateTime.SpecifyKind(start, DateTimeKind.Utc);
-            end = DateTime.SpecifyKind(end, DateTimeKind.Utc);
+            return await InPeriod(start, end)
+                .Where(x => x.UserId == userId)
+                .OrderByDescending(x => x.StartAt)
+                .ToListAsync();
+        }
 
-            return await _context.MouseSessions
-                .Where(x =>
-                    x.UserId == userId &&
-                    x.StartAt >= start &&
-                    x.EndAt <= end)
+        public async Task<IEnumerable<MouseSession>> GetByOrganizationAsync(
+            Guid organizationId, DateTime start, DateTime end, IReadOnlyCollection<Guid>? userIds)
+        {
+            var query = InPeriod(start, end)
+                .Where(x => x.OrganizationId == organizationId);
+
+            if (userIds != null)
+                query = query.Where(x => userIds.Contains(x.UserId));
+
+            return await query
                 .OrderByDescending(x => x.StartAt)
                 .ToListAsync();
         }
@@ -48,14 +69,8 @@ namespace WiseMonitor.Api.Repositories
         public async Task<MouseSummaryDTO> GetSummaryAsync(
             Guid userId, DateTime start, DateTime end)
         {
-            start = DateTime.SpecifyKind(start, DateTimeKind.Utc);
-            end = DateTime.SpecifyKind(end, DateTimeKind.Utc);
-
-            return await _context.MouseSessions
-                .Where(x =>
-                    x.UserId == userId &&
-                    x.StartAt >= start &&
-                    x.EndAt <= end)
+            var summary = await InPeriod(start, end)
+                .Where(x => x.UserId == userId)
                 .GroupBy(_ => 1)
                 .Select(g => new MouseSummaryDTO
                 {
@@ -65,6 +80,9 @@ namespace WiseMonitor.Api.Repositories
                     TotalScrollCount = g.Sum(x => x.ScrollCount)
                 })
                 .FirstOrDefaultAsync();
+
+            // Sem sessões no período devolve zerado em vez de null (que virava 204 sem corpo).
+            return summary ?? new MouseSummaryDTO();
         }
 
         public async Task UpdateAsync(MouseSession session)

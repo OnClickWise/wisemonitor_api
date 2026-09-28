@@ -17,6 +17,7 @@ namespace WiseMonitor.Api.Authorization
                 Permissions.UsersCreate, Permissions.UsersEdit, Permissions.UsersDelete, Permissions.UsersView,
                 Permissions.DepartmentsCreate, Permissions.DepartmentsEdit, Permissions.DepartmentsDelete,
                 Permissions.TeamsCreate, Permissions.TeamsEdit, Permissions.TeamsDelete,
+                Permissions.SchedulesManage,
                 Permissions.ProjectsCreate, Permissions.ProjectsEdit, Permissions.ProjectsDelete,
                 Permissions.ReportsView, Permissions.ReportsExport,
                 Permissions.ScreenshotsView, Permissions.ScreenshotsDelete,
@@ -37,6 +38,7 @@ namespace WiseMonitor.Api.Authorization
                 Permissions.UsersCreate, Permissions.UsersEdit, Permissions.UsersDelete, Permissions.UsersView,
                 Permissions.DepartmentsCreate, Permissions.DepartmentsEdit, Permissions.DepartmentsDelete,
                 Permissions.TeamsCreate, Permissions.TeamsEdit, Permissions.TeamsDelete,
+                Permissions.SchedulesManage,
                 Permissions.ProjectsCreate, Permissions.ProjectsEdit, Permissions.ProjectsDelete,
                 Permissions.ReportsView, Permissions.ReportsExport,
                 Permissions.ScreenshotsView, Permissions.ScreenshotsDelete,
@@ -54,6 +56,7 @@ namespace WiseMonitor.Api.Authorization
                 Permissions.UsersView,
                 Permissions.DepartmentsEdit,
                 Permissions.TeamsCreate, Permissions.TeamsEdit, Permissions.TeamsDelete,
+                Permissions.SchedulesManage,
                 Permissions.ProjectsCreate, Permissions.ProjectsEdit,
                 Permissions.ReportsView, Permissions.ReportsExport,
                 Permissions.ScreenshotsView,
@@ -67,6 +70,7 @@ namespace WiseMonitor.Api.Authorization
             {
                 Permissions.UsersView,
                 Permissions.TeamsCreate, Permissions.TeamsEdit,
+                Permissions.SchedulesManage,
                 Permissions.ProjectsCreate, Permissions.ProjectsEdit,
                 Permissions.ReportsView, Permissions.ReportsExport,
                 Permissions.ScreenshotsView,
@@ -76,10 +80,12 @@ namespace WiseMonitor.Api.Authorization
                 Permissions.DelegationsCreate, Permissions.DelegationsView,
             },
 
+            // Supervisor: tudo restrito às equipes que administra (AccessScopeService).
             [UserRoles.Supervisor] = new HashSet<string>
             {
                 Permissions.UsersView,
                 Permissions.TeamsEdit,
+                Permissions.SchedulesManage,
                 Permissions.ReportsView, Permissions.ReportsExport,
                 Permissions.ScreenshotsView,
                 Permissions.ActivityView, Permissions.ActivityExport,
@@ -111,6 +117,7 @@ namespace WiseMonitor.Api.Authorization
             {
                 Permissions.UsersCreate, Permissions.UsersEdit, Permissions.UsersView,
                 Permissions.DepartmentsEdit,
+                Permissions.SchedulesManage,
                 Permissions.ReportsView, Permissions.ReportsExport,
                 Permissions.ActivityView,
                 Permissions.SystemMetricsView,

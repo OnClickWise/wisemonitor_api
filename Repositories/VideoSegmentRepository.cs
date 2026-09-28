@@ -59,23 +59,29 @@ namespace WiseMonitor.Api.Repositories
                 .ToListAsync();
         }
 
+        // Com VideoData — só para quem precisa dos bytes (vídeo completo da atividade).
+        public async Task<IEnumerable<VideoSegment>> GetHistoryWithDataAsync(string deviceId, DateTime from, DateTime to)
+        {
+            return await _context.VideoSegments
+                .AsNoTracking()
+                .Where(v => v.DeviceId == deviceId && v.EndedAt >= from && v.StartedAt <= to)
+                .OrderBy(v => v.StartedAt)
+                .ToListAsync();
+        }
+
         public async Task UpsertAsync(VideoSegment segment, TimeSpan retentionWindow)
         {
             await _context.VideoSegments.AddAsync(segment);
             await _context.SaveChangesAsync();
 
             var cutoff = DateTime.UtcNow - retentionWindow;
-            var old = await _context.VideoSegments
+            // Direto no banco: carregar as entidades trazia o MP4 de cada segmento só
+            // para apagá-lo, a cada upload (~10s por máquina).
+            await _context.VideoSegments
                 .Where(v => v.OrganizationId == segment.OrganizationId
                          && v.DeviceId == segment.DeviceId
                          && v.EndedAt < cutoff)
-                .ToListAsync();
-
-            if (old.Count > 0)
-            {
-                _context.VideoSegments.RemoveRange(old);
-                await _context.SaveChangesAsync();
-            }
+                .ExecuteDeleteAsync();
         }
     }
 }

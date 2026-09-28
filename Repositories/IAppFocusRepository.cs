@@ -13,10 +13,12 @@ public interface IAppFocusRepository
         Guid userId,
         DateTime date);
 
+    // userIds null = organização inteira
     Task<IEnumerable<AppFocusEvent>> GetByOrganizationAndPeriodAsync(
         Guid organizationId,
         DateTime startDate,
-        DateTime endDate);
+        DateTime endDate,
+        IReadOnlyCollection<Guid>? userIds = null);
 
     Task<AppFocusEvent?> GetByIdAsync(
         Guid id,
