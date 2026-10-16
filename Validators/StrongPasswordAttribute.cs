@@ -14,8 +14,11 @@ namespace WiseMonitor.Api.Validators
             if (string.IsNullOrWhiteSpace(password))
                 return new ValidationResult("A senha é obrigatória.");
 
-            if (password.Length < 6)
-                return new ValidationResult("A senha deve ter no mínimo 6 caracteres.");
+            if (password.Length < 8)
+                return new ValidationResult("A senha deve ter no mínimo 8 caracteres.");
+
+            if (password.Length > 128)
+                return new ValidationResult("A senha deve ter no máximo 128 caracteres.");
 
             // Regras:
             // ✔ Pelo menos 1 letra

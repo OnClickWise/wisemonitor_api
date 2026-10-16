@@ -10,6 +10,7 @@ using System.Linq;
 using WiseMonitor.Api.Data;
 using WiseMonitor.Api.DTOs;
 using WiseMonitor.Api.DTOs.SuperAdmin;
+using WiseMonitor.Api.Helpers;
 using WiseMonitor.Api.Models;
 using System.IO;
 
@@ -292,15 +293,21 @@ namespace WiseMonitor.Api.Controllers
             if (org == null)
                 return NotFound(new { success = false, message = "Organização não encontrada." });
 
+            if (logoFile == null && !ImageUploadValidator.IsSafeImageUrl(dto.LogoUrl))
+                return BadRequest(new { success = false, message = "URL de logo inválida." });
+
             if (logoFile != null && logoFile.Length > 0)
             {
+                var check = await ImageUploadValidator.ValidateAsync(logoFile);
+                if (!check.Ok)
+                    return BadRequest(new { success = false, message = check.Error });
+
                 var uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads", "logos");
 
                 if (!Directory.Exists(uploadsFolder))
                     Directory.CreateDirectory(uploadsFolder);
 
-                var extension = Path.GetExtension(logoFile.FileName);
-                var fileName = $"{Guid.NewGuid()}{extension}";
+                var fileName = $"{Guid.NewGuid()}{check.Extension}";
                 var filePath = Path.Combine(uploadsFolder, fileName);
 
                 await using var stream = new FileStream(filePath, FileMode.Create);

@@ -14,6 +14,7 @@ namespace WiseMonitor.Api.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
+    [Authorize]
     public class ScreenshotsController : ControllerBase
     {
         private readonly IScreenshotService _screenshotService;
@@ -61,17 +62,20 @@ namespace WiseMonitor.Api.Controllers
 
             try
             {
-                // 🔐 Segurança: Tenta pegar OrgId do Token se disponível
-                // Se for upload via Agent sem token de usuário, o DTO já deve ter os dados
-                // Se for upload autenticado, preenchemos aqui
-                if (User.Identity.IsAuthenticated)
-                {
-                    dto.OrganizationId = User.GetOrganizationId();
-                }
+                // 🔐 A organização vem sempre do token. Antes o upload era anônimo e
+                // aceitava o OrganizationId do próprio formulário — qualquer pessoa
+                // injetava capturas falsas no painel de qualquer empresa.
+                dto.OrganizationId = User.GetOrganizationId();
 
                 // Screenshots são do Professional em diante — não armazena para planos sem a feature.
                 if (!await _entitlements.HasFeatureAsync(dto.OrganizationId, Features.Screenshots, HttpContext.RequestAborted))
                     return RequiresFeatureFilter.FeatureNotInPlan(Features.Screenshots);
+
+                // Device já visto ao vivo em outra organização: não deixa sobrescrever
+                // a miniatura/status do painel de outra empresa com o mesmo DeviceId.
+                var liveEntry = _liveService.GetLiveDevice(dto.DeviceId);
+                if (liveEntry != null && liveEntry.OrgId != dto.OrganizationId.ToString())
+                    return NotFound();
 
                 var result = await _screenshotService.SaveScreenshotAsync(dto);
 
@@ -107,7 +111,7 @@ namespace WiseMonitor.Api.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "[Upload Erro]");
-                return StatusCode(500, new { message = "Erro ao salvar", error = ex.Message });
+                return StatusCode(500, new { message = "Erro ao salvar" });
             }
         }
 
@@ -126,10 +130,7 @@ namespace WiseMonitor.Api.Controllers
                 c.Type == "orgId");
 
             if (orgClaim == null)
-            {
-                var claimList = string.Join(", ", User.Claims.Select(c => c.Type));
-                return Unauthorized($"OrganizationId não encontrado. Chaves disponíveis: {claimList}");
-            }
+                return Unauthorized("OrganizationId não encontrado.");
 
             var organizationId = Guid.Parse(orgClaim.Value);
 
@@ -162,12 +163,13 @@ namespace WiseMonitor.Api.Controllers
                     deviceId = x.DeviceId,
                     capturedAt = x.CapturedAt,
                     createdAt = x.CapturedAt,
-                    imageUrl = $"{baseUrl}/api/Screenshots/{x.Id}"
+                    imageUrl = $"{baseUrl}{_screenshotService.BuildSignedPath(x.Id)}"
                 }));
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { error = "Erro interno ao listar", detail = ex.Message });
+                _logger.LogError(ex, "[Screenshots] Erro ao listar");
+                return StatusCode(500, new { error = "Erro interno ao listar" });
             }
         }
 
@@ -195,9 +197,14 @@ namespace WiseMonitor.Api.Controllers
         // 📥 DOWNLOAD POR ID
         // ============================
         [HttpGet("{id:guid}")]
-        [AllowAnonymous] // <--- Importante para carregar imagens no frontend sem header de auth
-        public async Task<IActionResult> GetById(Guid id)
+        [AllowAnonymous] // a tag <img> do navegador não manda header de autenticação
+        public async Task<IActionResult> GetById(Guid id, [FromQuery] long exp, [FromQuery] string? sig)
         {
+            // Única barreira desta rota: o filtro de tenant do EF não vale para requisição
+            // anônima, então sem a assinatura qualquer GUID abria a tela de outra empresa.
+            if (!_screenshotService.ValidateAccess(id, exp, sig))
+                return Unauthorized();
+
             var screenshot = await _screenshotService.GetByIdAsync(id);
             if (screenshot == null)
                 return NotFound();

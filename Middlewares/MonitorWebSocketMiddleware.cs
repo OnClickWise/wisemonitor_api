@@ -81,7 +81,14 @@ namespace WiseMonitor.Api.Middlewares
             }
 
             var orgId = orgGuid.ToString();
-            var sessionId = context.Request.Query["deviceId"].FirstOrDefault() ?? Guid.NewGuid().ToString();
+            // O id de sessão vem do cliente: prefixado com o usuário do token, para que
+            // ninguém reaproveite o id de sessão de outra pessoa (e herde o escopo dela
+            // ou derrube os "watch" dela ao desconectar).
+            var callerId = principal!.FindFirst("sub")?.Value
+                        ?? principal.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                        ?? "anon";
+            var requestedSession = context.Request.Query["deviceId"].FirstOrDefault() ?? Guid.NewGuid().ToString();
+            var sessionId = $"{callerId}:{requestedSession}";
 
             var liveService = context.RequestServices.GetRequiredService<ILiveMonitoringService>();
 

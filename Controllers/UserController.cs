@@ -9,7 +9,7 @@ using WiseMonitor.Api.Authorization;
 using WiseMonitor.Api.DTOs;
 using WiseMonitor.Api.Models.Enums;
 using WiseMonitor.Api.Extensions;
-using WiseMonitor.Api.Models.Enums;
+using WiseMonitor.Api.Helpers;
 using WiseMonitor.Api.Services;
 using System.IO;
 
@@ -51,6 +51,9 @@ namespace WiseMonitor.Api.Controllers
             return orgId;
         }
 
+        private string CallerRole() =>
+            User.FindFirst(ClaimTypes.Role)?.Value ?? User.FindFirst("role")?.Value ?? string.Empty;
+
         [HttpPost]
         [HasPermission(Permissions.UsersCreate)]
         public async Task<IActionResult> CreateUser([FromBody] UserCreateDTO dto)
@@ -60,6 +63,10 @@ namespace WiseMonitor.Api.Controllers
                 var orgId = GetOrganizationId();
                 // Normaliza o papel para o valor canônico
                 dto.Role = UserRoles.Normalize(dto.Role);
+
+                if (!UserRoles.CanAssign(CallerRole(), dto.Role))
+                    return StatusCode(StatusCodes.Status403Forbidden,
+                        new { error = "Você não pode atribuir este papel." });
 
                 var subscription = await _entitlements.GetAsync(orgId, HttpContext.RequestAborted);
                 if (subscription != null && !subscription.HasSeatAvailable)
@@ -156,6 +163,21 @@ namespace WiseMonitor.Api.Controllers
                 if (!string.IsNullOrWhiteSpace(dto.Role))
                     dto.Role = UserRoles.Normalize(dto.Role);
 
+                var target = await _userService.GetUserByIdAsync(id, orgId);
+                if (target == null)
+                    return NotFound();
+
+                var callerRole = CallerRole();
+                if (id != User.GetUserId() && !UserRoles.CanManage(callerRole, target.Role))
+                    return StatusCode(StatusCodes.Status403Forbidden,
+                        new { error = "Você não pode alterar este usuário." });
+
+                if (!string.IsNullOrWhiteSpace(dto.Role) &&
+                    dto.Role != UserRoles.Normalize(target.Role) &&
+                    (id == User.GetUserId() || !UserRoles.CanAssign(callerRole, dto.Role)))
+                    return StatusCode(StatusCodes.Status403Forbidden,
+                        new { error = "Você não pode atribuir este papel." });
+
                 var updatedUser = await _userService.UpdateUserAsync(id, dto, orgId);
 
                 await _auditService.LogAsync(
@@ -188,6 +210,15 @@ namespace WiseMonitor.Api.Controllers
             try
             {
                 var orgId = GetOrganizationId();
+
+                var target = await _userService.GetUserByIdAsync(id, orgId);
+                if (target == null)
+                    return NotFound(new { error = "Usuário não encontrado ou não pertence à organização." });
+
+                if (id == User.GetUserId() || !UserRoles.CanManage(CallerRole(), target.Role))
+                    return StatusCode(StatusCodes.Status403Forbidden,
+                        new { error = "Você não pode remover este usuário." });
+
                 bool deleted = await _userService.DeleteUserAsync(id, orgId);
 
                 if (!deleted)
@@ -230,8 +261,15 @@ namespace WiseMonitor.Api.Controllers
 
                     string? avatarUrl = dto.AvatarUrl;
 
+                    if (avatarFile == null && !ImageUploadValidator.IsSafeImageUrl(avatarUrl))
+                        return BadRequest(new { error = "URL de imagem inválida." });
+
                     if (avatarFile != null && avatarFile.Length > 0)
                     {
+                        var check = await ImageUploadValidator.ValidateAsync(avatarFile);
+                        if (!check.Ok)
+                            return BadRequest(new { error = check.Error });
+
                         var uploadsFolder = Path.Combine(
                             Directory.GetCurrentDirectory(),
                             "wwwroot",
@@ -242,8 +280,7 @@ namespace WiseMonitor.Api.Controllers
                         if (!Directory.Exists(uploadsFolder))
                             Directory.CreateDirectory(uploadsFolder);
 
-                        var extension = Path.GetExtension(avatarFile.FileName);
-                        var fileName = $"{Guid.NewGuid()}{extension}";
+                        var fileName = $"{Guid.NewGuid()}{check.Extension}";
                         var filePath = Path.Combine(uploadsFolder, fileName);
 
                         await using var stream = new FileStream(filePath, FileMode.Create);

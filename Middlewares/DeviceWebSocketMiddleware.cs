@@ -107,6 +107,20 @@ namespace WiseMonitor.Api.Middlewares
                             ? LiveRole.Viewer
                             : LiveRole.Producer;
 
+                        // O papel vem do cliente: sem essa checagem, um funcionário comum
+                        // se declarava "viewer" e assistia a tela dos colegas ao vivo.
+                        if (role == LiveRole.Viewer)
+                        {
+                            var userRole = context.User?.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value
+                                        ?? context.User?.FindFirst("role")?.Value;
+                            if (!WiseMonitor.Api.Authorization.RolePermissionMatrix.HasPermission(
+                                    userRole ?? string.Empty, WiseMonitor.Api.Models.Enums.Permissions.LivestreamView))
+                            {
+                                _logger.LogWarning("[WS] Viewer negado (papel {Role}) | Org={OrganizationId}", userRole, organizationId);
+                                break;
+                            }
+                        }
+
                         var userId = signal.DeviceId
                             ?? context.Connection.RemoteIpAddress?.ToString()
                             ?? Guid.NewGuid().ToString();

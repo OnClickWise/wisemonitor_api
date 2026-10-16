@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using WiseMonitor.Api.DTOs;
+using WiseMonitor.Api.Helpers;
 using WiseMonitor.Api.Services;
 
 namespace WiseMonitor.Api.Controllers
@@ -12,10 +13,12 @@ namespace WiseMonitor.Api.Controllers
     public class AuthController : ControllerBase
     {
         private readonly IAuthService _authService;
+        private readonly LoginAttemptTracker _attempts;
 
-        public AuthController(IAuthService authService)
+        public AuthController(IAuthService authService, LoginAttemptTracker attempts)
         {
             _authService = authService;
+            _attempts = attempts;
         }
 
         // ====================
@@ -27,13 +30,24 @@ namespace WiseMonitor.Api.Controllers
             if (request == null || string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Password))
                 return BadRequest(new { message = "Email e senha são obrigatórios." });
 
+            if (_attempts.IsLockedOut(request.Email, out var retryAfter))
+            {
+                Response.Headers.RetryAfter = ((int)Math.Ceiling(retryAfter.TotalSeconds)).ToString();
+                return StatusCode(StatusCodes.Status429TooManyRequests, new
+                {
+                    message = "Muitas tentativas de login. Tente novamente em alguns minutos."
+                });
+            }
+
             try
             {
                 var result = await _authService.LoginByEmailAsync(request.Email, request.Password);
+                _attempts.Reset(request.Email);
                 return Ok(result);
             }
             catch (UnauthorizedAccessException)
             {
+                _attempts.RecordFailure(request.Email);
                 return Unauthorized(new { message = "Credenciais inválidas." });
             }
         }
@@ -111,9 +125,9 @@ namespace WiseMonitor.Api.Controllers
             {
                 return Unauthorized(new { message = "Token inválido ou expirado." });
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                return StatusCode(500, new { message = $"Erro ao encerrar sessão: {ex.Message}" });
+                return StatusCode(500, new { message = "Erro ao encerrar sessão." });
             }
         }
     }

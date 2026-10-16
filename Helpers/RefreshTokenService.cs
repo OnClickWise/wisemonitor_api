@@ -26,7 +26,10 @@ namespace WiseMonitor.Api.Helpers
         public RefreshTokenService(AppDbContext context, IConfiguration config)
         {
             _context = context ?? throw new ArgumentNullException(nameof(context));
-            _expirationDays = int.TryParse(config["Jwt:RefreshTokenExpirationDays"], out var days) ? days : 3650;
+            // Era 3650 (10 anos). Como cada /auth/refresh emite um token novo com prazo
+            // renovado, 90 dias é uma janela deslizante: o agent ativo nunca expira, mas um
+            // token vazado de máquina desligada/desinstalada deixa de valer.
+            _expirationDays = int.TryParse(config["Jwt:RefreshTokenExpirationDays"], out var days) ? days : 90;
         }
 
         public async Task<string> IssueAsync(Guid userId)

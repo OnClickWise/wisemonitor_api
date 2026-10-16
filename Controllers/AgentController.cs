@@ -92,7 +92,7 @@ namespace WiseMonitor.Api.Controllers
             if (!System.IO.File.Exists(filePath))
             {
                 Response.StatusCode = 404;
-                await Response.WriteAsync($"Installer não encontrado: {filePath}");
+                await Response.WriteAsync($"Installer não encontrado.");
                 return;
             }
 

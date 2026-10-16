@@ -49,5 +49,15 @@ namespace WiseMonitor.Api.Configs
 
         public string FileName { get; set; }
             = "WiseMonitorAgentSetup.exe";
+
+        // ============================================
+        // SHA-256 DO PACOTE (hex)
+        // O agent confere o download contra este valor antes de executar o
+        // instalador. Definir a cada release (env AgentSettings__Sha256) —
+        // o build-sign.ps1 já imprime o hash do instalador gerado.
+        // ============================================
+
+        public string Sha256 { get; set; }
+            = string.Empty;
     }
 }

@@ -13,6 +13,7 @@ namespace WiseMonitor.Api.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
+    [Authorize]
     public class LiveMonitoringController : ControllerBase
     {
         private readonly LiveMonitoringService _liveService;
@@ -69,6 +70,12 @@ namespace WiseMonitor.Api.Controllers
             if (!allowedExtensions.Contains(ext))
                 return BadRequest(new { message = "Formato de arquivo não suportado. Use PNG ou JPG." });
 
+            // Organização sempre do token — nunca do formulário.
+            var orgId = GetOrgId();
+            if (orgId == null)
+                return Unauthorized();
+            dto.OrganizationId = orgId.Value;
+
             // Screenshots são do Professional em diante — mesma regra do ScreenshotsController.
             if (!await _entitlements.HasFeatureAsync(dto.OrganizationId, Features.Screenshots, HttpContext.RequestAborted))
                 return RequiresFeatureFilter.FeatureNotInPlan(Features.Screenshots);
@@ -87,7 +94,7 @@ namespace WiseMonitor.Api.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "[Screenshot Upload] Erro ao salvar screenshot");
-                return StatusCode(500, new { message = "Erro ao salvar screenshot", error = ex.Message });
+                return StatusCode(500, new { message = "Erro ao salvar screenshot" });
             }
         }
 
@@ -98,6 +105,17 @@ namespace WiseMonitor.Api.Controllers
             if (dto == null || string.IsNullOrWhiteSpace(dto.DeviceId))
                 return BadRequest(new { message = "Dados inválidos" });
 
+            var orgId = GetOrgId();
+            if (orgId == null)
+                return Unauthorized();
+
+            // Um device já visto ao vivo em outra organização não pode ser sobrescrito
+            // (senão dava para trocar a miniatura/status do painel de outra empresa).
+            var existing = _liveService.GetLiveDevice(dto.DeviceId);
+            if (existing != null && existing.OrgId != orgId.Value.ToString())
+                return NotFound();
+
+            dto.OrgId = orgId.Value.ToString();
             _liveService.RegisterOrUpdateDevice(dto);
             return Ok(new { message = "Dados do dispositivo atualizados" });
         }

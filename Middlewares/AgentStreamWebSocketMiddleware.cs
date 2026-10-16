@@ -4,6 +4,7 @@ using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using WiseMonitor.Api.Helpers;
@@ -85,6 +86,29 @@ namespace WiseMonitor.Api.Middlewares
             {
                 context.Response.StatusCode = StatusCodes.Status400BadRequest;
                 await context.Response.WriteAsync("deviceId ausente.");
+                return;
+            }
+
+            // O relay indexa só por deviceId (o agent usa o hostname): sem isso, um usuário
+            // de outra empresa conectava com o mesmo nome e tomava o canal da máquina
+            // legítima. Recusa se o nome é de outra organização (e não desta), ou se já
+            // há um agent conectado com esse nome vindo de outra organização. Não exige
+            // cadastro prévio porque o hostname do stream é editável no agent.
+            var db = context.RequestServices.GetRequiredService<WiseMonitor.Api.Data.AppDbContext>();
+            var relayCheck = context.RequestServices.GetRequiredService<LiveFrameRelay>();
+            var parsedId = Guid.TryParse(deviceId, out var deviceGuid) ? deviceGuid : (Guid?)null;
+            var owners = await db.Devices
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .Where(d => d.Hostname == deviceId || (parsedId != null && d.Id == parsedId))
+                .Select(d => d.OrganizationId)
+                .Distinct()
+                .ToListAsync();
+            var ownedElsewhere = owners.Count > 0 && !owners.Contains(orgGuid);
+            if (ownedElsewhere || relayCheck.IsConnectedFromOtherOrg(deviceId, orgGuid.ToString()))
+            {
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                await context.Response.WriteAsync("Device não pertence à organização.");
                 return;
             }
 

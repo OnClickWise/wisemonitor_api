@@ -61,7 +61,7 @@ namespace WiseMonitor.Api.Services
                 throw new UnauthorizedAccessException("Credenciais inválidas");
             }
 
-            var token = GenerateJwtToken(user);
+            var token = _jwtService.GenerateToken(user);
             return new LoginResponseDTO
             {
                 Token = token,  
@@ -135,6 +135,11 @@ namespace WiseMonitor.Api.Services
             if (user == null || !VerifyPassword(password, user.PasswordHash))
                 throw new UnauthorizedAccessException("Credenciais inválidas.");
 
+            // Usuário removido (soft delete) ou empresa suspensa não entram — antes só o
+            // LoginAsync legado checava IsActive e a suspensão de tenant era ignorada.
+            if (!user.IsActive || IsSuspended(user.Organization))
+                throw new UnauthorizedAccessException("Credenciais inválidas.");
+
             var sessionId = user.OrganizationId.HasValue
                 ? await _liveSessionService.GetOrCreateSessionForOrganizationAsync(user.OrganizationId.Value)
                 : Guid.NewGuid().ToString();
@@ -176,6 +181,13 @@ namespace WiseMonitor.Api.Services
                 throw new UnauthorizedAccessException("Refresh token inválido, expirado ou já usado.");
 
             var (user, newRefreshToken) = result.Value;
+
+            if (user.OrganizationId.HasValue)
+            {
+                var org = await _context.Organizations.FindAsync(user.OrganizationId.Value);
+                if (IsSuspended(org))
+                    throw new UnauthorizedAccessException("Refresh token inválido, expirado ou já usado.");
+            }
 
             var sessionId = user.OrganizationId.HasValue
                 ? await _liveSessionService.GetOrCreateSessionForOrganizationAsync(user.OrganizationId.Value)
@@ -255,8 +267,20 @@ namespace WiseMonitor.Api.Services
             user.PasswordHash = HashPassword(newPassword);
             resetToken.Used = true;
 
+            // Troca de senha derruba as sessões de longa duração (agent/navegador) —
+            // senão quem roubou um refresh token continuaria entrando depois do reset.
+            var now = DateTime.UtcNow;
+            var activeTokens = await _context.RefreshTokens
+                .Where(t => t.UserId == user.Id && t.RevokedAt == null)
+                .ToListAsync();
+            foreach (var t in activeTokens)
+                t.RevokedAt = now;
+
             await _context.SaveChangesAsync();
         }
+
+        private static bool IsSuspended(Organization? org) =>
+            org != null && string.Equals(org.Status, "Suspended", StringComparison.OrdinalIgnoreCase);
 
         public async Task LogoutAsync(string bearerToken)
         {

@@ -54,6 +54,11 @@ var jwtSecret = Environment.GetEnvironmentVariable("JWT_SECRET");
 if (string.IsNullOrWhiteSpace(jwtSecret))
     throw new Exception("JWT_SECRET não configurado em produção!");
 
+// HMAC-SHA256 com chave curta é quebrável por força bruta offline a partir de
+// qualquer token emitido — e a mesma chave assina as URLs de vídeo/captura.
+if (Encoding.UTF8.GetByteCount(jwtSecret) < 32)
+    throw new Exception("JWT_SECRET precisa ter pelo menos 32 bytes (use um valor aleatório de 64+ caracteres).");
+
 var jwtSettings = new JwtSettings
 {
     SecretKey          = jwtSecret,
@@ -124,13 +129,17 @@ builder.Services.AddRateLimiter(options =>
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 
     // Login/forgot-password: alvo primário de força bruta/enumeração de e-mails.
-    options.AddFixedWindowLimiter("auth", opt =>
-    {
-        opt.PermitLimit = 10;
-        opt.Window = TimeSpan.FromMinutes(1);
-        opt.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
-        opt.QueueLimit = 0;
-    });
+    // Particionado por IP: um AddFixedWindowLimiter simples é UM balde para a
+    // plataforma inteira — 10 requisições de um atacante travavam o login de todos.
+    options.AddPolicy("auth", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            }));
 
     // Limite global sensato por IP para o restante da API.
     options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
@@ -219,6 +228,19 @@ builder.Services.AddSingleton<LiveStreamHub>();
 // Helpers / Infra
 // =======================
 builder.Services.AddSingleton<JwtHelper>();
+builder.Services.AddSingleton<LoginAttemptTracker>();
+
+// Cloud Run/load balancer: sem isso RemoteIpAddress é o IP do proxy do Google, e o
+// rate limit por IP vira um balde só para todos os clientes. ForwardLimit = 1 usa só
+// o último hop (o que o próprio proxy acrescentou), então o cliente não forja o IP.
+builder.Services.Configure<Microsoft.AspNetCore.Builder.ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedFor
+                             | Microsoft.AspNetCore.HttpOverrides.ForwardedHeaders.XForwardedProto;
+    options.ForwardLimit = 1;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ITenantContext, TenantContext>();
 
@@ -270,11 +292,16 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         ClockSkew                = TimeSpan.Zero
     };
 
-    // Suporte a JWT via query string (WebSocket)
+    // Suporte a JWT via query string — só no handshake de WebSocket, onde o navegador
+    // não consegue mandar header. Em rota HTTP comum o token na URL vaza em log de
+    // proxy, histórico do navegador e header Referer.
     options.Events = new JwtBearerEvents
     {
         OnMessageReceived = ctx =>
         {
+            if (!ctx.Request.Path.StartsWithSegments("/ws"))
+                return Task.CompletedTask;
+
             var token = ctx.Request.Query["token"].FirstOrDefault();
             if (!string.IsNullOrWhiteSpace(token))
                 ctx.Token = token;
@@ -349,6 +376,13 @@ if (app.Environment.IsDevelopment())
 // =======================
 // MIDDLEWARES
 // =======================
+app.UseForwardedHeaders();
+app.UseMiddleware<ExceptionMiddleware>();
+app.UseMiddleware<SecurityHeadersMiddleware>();
+
+if (!app.Environment.IsDevelopment())
+    app.UseHsts();
+
 app.UseRouting();
 app.UseCors("Default");
 app.UseRateLimiter();
@@ -429,9 +463,18 @@ using (var scope = app.Services.CreateScope())
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
         var superAdminEmail = Environment.GetEnvironmentVariable("SUPERADMIN_EMAIL") ?? "superadmin@wisemonitor.com";
-        var superAdminPassword = Environment.GetEnvironmentVariable("SUPERADMIN_PASSWORD") ?? "SuperAdmin@2025!";
+        var superAdminPassword = Environment.GetEnvironmentVariable("SUPERADMIN_PASSWORD");
 
-        if (!db.Users.Any(u => u.IsSuperAdmin))
+        // O repositório é público: uma senha padrão aqui é a senha do SuperAdmin de
+        // qualquer ambiente que esqueceu de definir SUPERADMIN_PASSWORD.
+        if (string.IsNullOrWhiteSpace(superAdminPassword) && app.Environment.IsDevelopment())
+            superAdminPassword = "SuperAdmin@2025!";
+
+        if (!db.Users.Any(u => u.IsSuperAdmin) && string.IsNullOrWhiteSpace(superAdminPassword))
+        {
+            Log.Warning("[SEED] Nenhum SuperAdmin existe e SUPERADMIN_PASSWORD não está definida — seed ignorado.");
+        }
+        else if (!db.Users.Any(u => u.IsSuperAdmin))
         {
             db.Users.Add(new WiseMonitor.Api.Models.User
             {

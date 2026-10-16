@@ -47,6 +47,40 @@ namespace WiseMonitor.Api.Models.Enums
             _              => 99
         };
 
+        /// <summary>
+        /// Se quem tem <paramref name="callerRole"/> pode dar <paramref name="targetRole"/> a
+        /// alguém (criar/editar). SuperAdmin nunca é atribuível por aqui — só existe via
+        /// seed/painel de plataforma. TenantAdmin atribui qualquer papel de tenant; os demais
+        /// só papéis estritamente abaixo do seu na hierarquia (senão RH criaria um TenantAdmin).
+        /// </summary>
+        public static bool CanAssign(string? callerRole, string? targetRole)
+        {
+            var caller = Normalize(callerRole);
+            var target = Normalize(targetRole);
+
+            if (!TenantLevel.Contains(target))
+                return false;
+
+            if (caller is SuperAdmin or TenantAdmin)
+                return true;
+
+            return GetHierarchyLevel(target) > GetHierarchyLevel(caller);
+        }
+
+        /// <summary>
+        /// Se quem tem <paramref name="callerRole"/> pode alterar um usuário que hoje tem
+        /// <paramref name="targetCurrentRole"/>. Mesma regra de <see cref="CanAssign"/>:
+        /// sem isso, RH trocaria o e-mail de um TenantAdmin e tomaria a conta pelo "esqueci a senha".
+        /// </summary>
+        public static bool CanManage(string? callerRole, string? targetCurrentRole)
+        {
+            var caller = Normalize(callerRole);
+            if (caller is SuperAdmin or TenantAdmin)
+                return Normalize(targetCurrentRole) != SuperAdmin;
+
+            return GetHierarchyLevel(Normalize(targetCurrentRole)) > GetHierarchyLevel(caller);
+        }
+
         public static string Normalize(string? role) => role?.Trim() switch
         {
             "admin" or "Admin" or "ADMIN" => TenantAdmin,

@@ -57,7 +57,10 @@ namespace WiseMonitor.Api.Services
                     _settings.ForceUpdate,
 
                 DownloadUrl =
-                    downloadUrl
+                    downloadUrl,
+
+                Sha256 =
+                    _settings.Sha256.Trim().ToLowerInvariant()
             };
         }
     }

@@ -31,7 +31,7 @@ namespace WiseMonitor.Api.DTOs
 
         // 🔐 Senha forte obrigatória
         [Required(ErrorMessage = "A senha é obrigatória.")]
-        [MinLength(6, ErrorMessage = "A senha deve ter no mínimo 6 caracteres.")]
+        [MinLength(8, ErrorMessage = "A senha deve ter no mínimo 8 caracteres.")]
         [StrongPassword]
         public string AdminPassword { get; set; } = string.Empty;
     }

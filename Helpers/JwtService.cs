@@ -33,9 +33,12 @@ namespace WiseMonitor.Api.Helpers
             var expiresInMinutes = int.TryParse(_config["Jwt:ExpirationMinutes"], out var minutes) ? minutes : 60;
 
             // Normaliza o papel para o valor canônico
+            // SuperAdmin só vem da flag IsSuperAdmin: um Role = "SuperAdmin" gravado
+            // num usuário de tenant viraria acesso a todos os tenants.
+            var normalizedRole = UserRoles.Normalize(user.Role);
             var role = user.IsSuperAdmin
                 ? UserRoles.SuperAdmin
-                : UserRoles.Normalize(user.Role);
+                : normalizedRole == UserRoles.SuperAdmin ? UserRoles.Employee : normalizedRole;
 
             var claimList = new System.Collections.Generic.List<Claim>
             {
@@ -110,8 +113,12 @@ namespace WiseMonitor.Api.Helpers
             {
                 var principal = tokenHandler.ValidateToken(token, new TokenValidationParameters
                 {
-                    ValidateIssuer           = false,
-                    ValidateAudience         = false,
+                    // Mesmo emissor/audiência da autenticação principal: sem isso, um token
+                    // assinado com a mesma chave por outro sistema seria aceito aqui.
+                    ValidateIssuer           = !string.IsNullOrWhiteSpace(_config["Jwt:Issuer"]),
+                    ValidIssuer              = _config["Jwt:Issuer"],
+                    ValidateAudience         = !string.IsNullOrWhiteSpace(_config["Jwt:Audience"]),
+                    ValidAudience            = _config["Jwt:Audience"],
                     ValidateLifetime         = true,
                     IssuerSigningKey         = key,
                     ValidateIssuerSigningKey = true,

@@ -89,6 +89,12 @@ namespace WiseMonitor.Api.Services
 
         public bool IsAgentConnected(string deviceId) => _agents.ContainsKey(deviceId);
 
+        /// <summary>Há um agent conectado com este deviceId, mas de outra organização.</summary>
+        public bool IsConnectedFromOtherOrg(string deviceId, string orgId) =>
+            _agents.TryGetValue(deviceId, out var existing) &&
+            existing.Socket.State == WebSocketState.Open &&
+            existing.OrgId != orgId;
+
         // ================================
         // CONTROLE (backend -> agent)
         // ================================

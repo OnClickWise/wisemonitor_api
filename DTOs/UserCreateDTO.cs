@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using WiseMonitor.Api.Validators;
 
 namespace WiseMonitor.Api.DTOs
 {
@@ -22,8 +23,7 @@ namespace WiseMonitor.Api.DTOs
 
         public bool IsActive { get; set; } = true;
 
-        [Required]
-        [StringLength(100, MinimumLength = 6)]
+        [StrongPassword]
         public string Password { get; set; } = string.Empty;
 
         public Guid OrganizationId { get; set; }
