@@ -1,23 +1,22 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Net.Http;
-using System.Threading;
 using System.Threading.Tasks;
-using Google.Apis.Auth.OAuth2;
-using Google.Cloud.Storage.V1;
+using Amazon.Runtime;
+using Amazon.S3;
+using Amazon.S3.Model;
 
 namespace WiseMonitor.Api.Services
 {
     /// <summary>
-    /// Guarda os segmentos de vídeo no Google Cloud Storage em vez do Postgres.
-    /// O agent envia o MP4 direto ao bucket por uma URL assinada (o arquivo não passa
-    /// pelo Cloud Run) e o painel toca o vídeo do bucket por outra URL assinada.
-    /// Quando o bucket guardava os bytes na coluna VideoData, 83 máquinas mandando um
-    /// MP4 a cada 10s encheram o banco (545 GB) e derrubaram a API.
+    /// Guarda os segmentos de vídeo num bucket compatível com S3 (Cloudflare R2, Backblaze
+    /// B2, MinIO...) em vez do Postgres. O agent envia o MP4 direto ao bucket por uma URL
+    /// assinada (o arquivo não passa pela API) e o painel toca o vídeo do bucket por outra
+    /// URL assinada. Com os bytes na coluna VideoData, dezenas de máquinas mandando um MP4
+    /// a cada 10s enchem o banco em poucos dias.
     ///
-    /// Desligado enquanto VIDEO_BUCKET não estiver definido: o agent recebe 204 e
-    /// descarta o segmento. A retenção (90 dias) é uma regra de ciclo de vida do bucket.
+    /// Desligado enquanto VIDEO_BUCKET, VIDEO_STORAGE_ENDPOINT, VIDEO_STORAGE_ACCESS_KEY e
+    /// VIDEO_STORAGE_SECRET_KEY não estiverem todos definidos: o agent usa o upload antigo.
+    /// A retenção dos arquivos é uma regra de ciclo de vida do bucket.
     /// </summary>
     public class VideoStorageService : IVideoStorageService
     {
@@ -27,17 +26,36 @@ namespace WiseMonitor.Api.Services
         private static readonly TimeSpan ReadUrlValidity = TimeSpan.FromHours(1);
 
         private readonly string? _bucket;
-        private readonly SemaphoreSlim _initLock = new(1, 1);
-        private UrlSigner? _signer;
-        private StorageClient? _client;
+        private readonly AmazonS3Client? _client;
 
         public VideoStorageService()
         {
-            var bucket = Environment.GetEnvironmentVariable("VIDEO_BUCKET");
-            _bucket = string.IsNullOrWhiteSpace(bucket) ? null : bucket.Trim();
+            var bucket = Env("VIDEO_BUCKET");
+            // R2: https://<account-id>.r2.cloudflarestorage.com
+            var endpoint = Env("VIDEO_STORAGE_ENDPOINT");
+            var accessKey = Env("VIDEO_STORAGE_ACCESS_KEY");
+            var secretKey = Env("VIDEO_STORAGE_SECRET_KEY");
+
+            if (bucket == null || endpoint == null || accessKey == null || secretKey == null)
+                return;
+
+            _bucket = bucket;
+            _client = new AmazonS3Client(
+                new BasicAWSCredentials(accessKey, secretKey),
+                new AmazonS3Config
+                {
+                    ServiceURL = endpoint,
+                    // R2 usa a região "auto"; B2/MinIO aceitam a que vier aqui.
+                    AuthenticationRegion = Env("VIDEO_STORAGE_REGION") ?? "auto",
+                    ForcePathStyle = true,
+                    // Checksums automáticos do SDK v4 não são aceitos por todo provedor S3
+                    // compatível (o R2 recusava uploads com eles): só quando obrigatórios.
+                    RequestChecksumCalculation = RequestChecksumCalculation.WHEN_REQUIRED,
+                    ResponseChecksumValidation = ResponseChecksumValidation.WHEN_REQUIRED,
+                });
         }
 
-        public bool IsEnabled => _bucket != null;
+        public bool IsEnabled => _client != null;
 
         /// <summary>
         /// O nome do objeto sai só da organização do token e de um id gerado pelo
@@ -47,69 +65,42 @@ namespace WiseMonitor.Api.Services
         public string BuildObjectName(Guid organizationId, Guid segmentId) =>
             $"videos/{organizationId:N}/{segmentId:N}.mp4";
 
-        public async Task<string> CreateUploadUrlAsync(string objectName)
-        {
-            var signer = await GetSignerAsync();
-            var template = UrlSigner.RequestTemplate
-                .FromBucket(RequireBucket())
-                .WithObjectName(objectName)
-                .WithHttpMethod(HttpMethod.Put)
-                .WithContentHeaders(new Dictionary<string, IEnumerable<string>>
-                {
-                    ["Content-Type"] = new[] { ContentType }
-                });
+        public Task<string> CreateUploadUrlAsync(string objectName) =>
+            RequireClient().GetPreSignedURLAsync(new GetPreSignedUrlRequest
+            {
+                BucketName = _bucket,
+                Key = objectName,
+                Verb = HttpVerb.PUT,
+                // O agent manda exatamente este Content-Type; ele entra na assinatura.
+                ContentType = ContentType,
+                Protocol = Protocol.HTTPS,
+                Expires = DateTime.UtcNow.Add(UploadUrlValidity),
+            });
 
-            return await signer.SignAsync(template, UrlSigner.Options.FromDuration(UploadUrlValidity));
-        }
-
-        public async Task<string> CreateReadUrlAsync(string objectName)
-        {
-            var signer = await GetSignerAsync();
-            var template = UrlSigner.RequestTemplate
-                .FromBucket(RequireBucket())
-                .WithObjectName(objectName)
-                .WithHttpMethod(HttpMethod.Get);
-
-            return await signer.SignAsync(template, UrlSigner.Options.FromDuration(ReadUrlValidity));
-        }
+        public Task<string> CreateReadUrlAsync(string objectName) =>
+            RequireClient().GetPreSignedURLAsync(new GetPreSignedUrlRequest
+            {
+                BucketName = _bucket,
+                Key = objectName,
+                Verb = HttpVerb.GET,
+                Protocol = Protocol.HTTPS,
+                Expires = DateTime.UtcNow.Add(ReadUrlValidity),
+            });
 
         public async Task DownloadToFileAsync(string objectName, string path)
         {
-            await EnsureInitializedAsync();
+            using var response = await RequireClient().GetObjectAsync(_bucket, objectName);
             await using var file = File.Create(path);
-            await _client!.DownloadObjectAsync(RequireBucket(), objectName, file);
+            await response.ResponseStream.CopyToAsync(file);
         }
 
-        private string RequireBucket() =>
-            _bucket ?? throw new InvalidOperationException("VIDEO_BUCKET não configurado.");
+        private AmazonS3Client RequireClient() =>
+            _client ?? throw new InvalidOperationException("Armazenamento de vídeo (VIDEO_BUCKET/VIDEO_STORAGE_*) não configurado.");
 
-        private async Task<UrlSigner> GetSignerAsync()
+        private static string? Env(string name)
         {
-            await EnsureInitializedAsync();
-            return _signer!;
-        }
-
-        private async Task EnsureInitializedAsync()
-        {
-            if (_signer != null && _client != null)
-                return;
-
-            await _initLock.WaitAsync();
-            try
-            {
-                if (_signer != null && _client != null)
-                    return;
-
-                // No Cloud Run é a conta de serviço da instância: a assinatura vai à API
-                // do IAM (signBlob), sem chave privada guardada em lugar nenhum.
-                var credential = await GoogleCredential.GetApplicationDefaultAsync();
-                _signer = UrlSigner.FromCredential(credential);
-                _client = await StorageClient.CreateAsync(credential);
-            }
-            finally
-            {
-                _initLock.Release();
-            }
+            var value = Environment.GetEnvironmentVariable(name);
+            return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
         }
     }
 

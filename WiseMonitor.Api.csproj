@@ -39,8 +39,8 @@
 
     <!-- AUTH -->
     <PackageReference Include="AspNetCore.HealthChecks.NpgSql" Version="9.0.0" />
+    <PackageReference Include="AWSSDK.S3" Version="4.0.104.5" />
     <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
-    <PackageReference Include="Google.Cloud.Storage.V1" Version="4.10.0" />
 
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.7" />
 
