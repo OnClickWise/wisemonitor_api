@@ -41,12 +41,12 @@ public class ReportDataService : IReportDataService
     {
         ValidateFilter(filter);
 
-        var isSupervisor = UserRoles.Normalize(callerRole) == UserRoles.Supervisor;
+        var isRestricted = !UserRoles.IsAdmin(callerRole);
 
-        // Escopo do supervisor: só pode gerar relatório da própria equipe —
-        // sem isso, filtrando por um TeamId/UserId de fora, ou sem filtro
-        // nenhum, ele enxergava a organização inteira.
-        HashSet<Guid>? supervisorScopeIds = isSupervisor
+        // Quem não é administrador (gerente, coordenador, supervisor...) só gera
+        // relatório das equipes que gere — sem isso, filtrando por um TeamId/UserId
+        // de fora, ou sem filtro nenhum, enxergava a organização inteira.
+        HashSet<Guid>? supervisorScopeIds = isRestricted
             ? (await _teamRepo.GetManagedMemberIdsAsync(callerId, organizationId)).ToHashSet()
             : null;
 
@@ -92,7 +92,7 @@ public class ReportDataService : IReportDataService
             }
 
             if (
-                isSupervisor &&
+                isRestricted &&
                 selectedTeam.ManagerId != callerId &&
                 !selectedTeam.Managers.Any(manager => manager.UserId == callerId)
             )
@@ -103,6 +103,7 @@ public class ReportDataService : IReportDataService
 
             teamMemberIds = selectedTeam.Members
                 .Select(member => member.UserId)
+                .Where(id => supervisorScopeIds == null || supervisorScopeIds.Contains(id))
                 .ToHashSet();
 
             subjectType = "team";

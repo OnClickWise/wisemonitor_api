@@ -52,6 +52,13 @@ namespace WiseMonitor.Api.Services
         /// </summary>
         private readonly ConditionalWeakTable<WebSocket, SemaphoreSlim> _viewerLocks = new();
 
+        /// <summary>
+        /// Último envio por (espectador, device), para respeitar o teto de fps de quem
+        /// pediu. A grade assiste várias telas no mesmo socket: sem teto, 12 telas a
+        /// 15 fps viram 180 frames/s para um navegador só.
+        /// </summary>
+        private readonly ConditionalWeakTable<WebSocket, ConcurrentDictionary<string, long>> _lastSent = new();
+
         private readonly ILiveMonitoringService _liveService;
         private readonly ILogger<LiveFrameRelay> _logger;
 
@@ -133,14 +140,22 @@ namespace WiseMonitor.Api.Services
 
         public async Task RelayFrameAsync(string deviceId, string orgId, ArraySegment<byte> jpeg)
         {
-            var sockets = _liveService.GetWatcherSockets(deviceId);
-            if (sockets.Count == 0) return;
+            var watchers = _liveService.GetWatchers(deviceId);
+            if (watchers.Count == 0) return;
 
-            var envelope = BuildEnvelope(deviceId, jpeg);
+            byte[]? envelope = null;
+            var now = Environment.TickCount64;
 
-            foreach (var socket in sockets)
+            foreach (var (socket, maxFps) in watchers)
             {
                 if (socket.State != WebSocketState.Open) continue;
+
+                if (maxFps > 0)
+                {
+                    var sent = _lastSent.GetValue(socket, _ => new ConcurrentDictionary<string, long>());
+                    if (sent.TryGetValue(deviceId, out var last) && now - last < 1000 / maxFps) continue;
+                    sent[deviceId] = now;
+                }
 
                 var gate = _viewerLocks.GetValue(socket, _ => new SemaphoreSlim(1, 1));
 
@@ -148,6 +163,7 @@ namespace WiseMonitor.Api.Services
                 // anterior, pula. Sem isso um cliente lento seguraria todos os outros.
                 if (!await gate.WaitAsync(0)) continue;
 
+                envelope ??= BuildEnvelope(deviceId, jpeg);
                 _ = SendToViewerAsync(socket, envelope, gate);
             }
         }

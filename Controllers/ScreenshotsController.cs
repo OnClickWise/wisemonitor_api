@@ -17,6 +17,9 @@ namespace WiseMonitor.Api.Controllers
     [Authorize]
     public class ScreenshotsController : ControllerBase
     {
+        private static readonly bool ScreenshotsEnabled =
+            !string.Equals(Environment.GetEnvironmentVariable("SCREENSHOTS_ENABLED"), "false", StringComparison.OrdinalIgnoreCase);
+
         private readonly IScreenshotService _screenshotService;
         private readonly ILiveMonitoringService _liveService;
         private readonly IDeviceService _deviceService;
@@ -48,6 +51,13 @@ namespace WiseMonitor.Api.Controllers
         [RequestSizeLimit(5 * 1024 * 1024)] // Limite de 5MB
         public async Task<IActionResult> Upload([FromForm] LiveMonitoringScreenshotUploadDTO dto)
         {
+            // SCREENSHOTS_ENABLED=false desliga as capturas no servidor: o agent continua
+            // mandando uma por minuto de cada máquina, e cada uma grava a imagem no banco e
+            // reenvia a lista de devices a todos os painéis. Responde 204 — o agent trata
+            // como sucesso — sem tocar no banco.
+            if (!ScreenshotsEnabled)
+                return NoContent();
+
             if (dto == null || dto.Screenshot == null || dto.Screenshot.Length == 0)
                 return BadRequest(new { message = "Arquivo inválido." });
 

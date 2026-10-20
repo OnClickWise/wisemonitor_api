@@ -29,7 +29,20 @@ public interface IAppFocusRepository
     Task DeleteAsync(Guid id);
 
     Task<IEnumerable<AppFocusEvent>> GetByUserDateRangeAsync(
-        Guid userId, 
-        DateTime start, 
+        Guid userId,
+        DateTime start,
+        DateTime end);
+
+    // Intervalo exato (sem arredondar para dias inteiros)
+    Task<IEnumerable<AppFocusEvent>> GetByDeviceRangeAsync(
+        Guid organizationId,
+        Guid deviceId,
+        DateTime start,
+        DateTime end);
+
+    // Eventos que se sobrepõem ao intervalo exato (inclui os que começaram antes)
+    Task<IEnumerable<AppFocusEvent>> GetByUserOverlappingAsync(
+        Guid userId,
+        DateTime start,
         DateTime end);
 }

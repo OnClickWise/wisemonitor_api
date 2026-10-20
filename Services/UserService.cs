@@ -99,9 +99,9 @@ namespace WiseMonitor.Api.Services
                 .AsNoTracking()
                 .Where(u => u.OrganizationId == organizationId);
 
-            // Supervisor só pode ver os usuários das equipes que ele administra —
-            // sem isso ele enxergava todo mundo da organização, igual TenantAdmin.
-            if (UserRoles.Normalize(callerRole) == UserRoles.Supervisor)
+            // Só administradores veem a organização inteira; os demais papéis, só quem
+            // está abaixo deles nas equipes que gerem (e eles mesmos).
+            if (!UserRoles.IsAdmin(callerRole))
             {
                 var memberIds = await _teamRepo.GetManagedMemberIdsAsync(callerId, organizationId);
                 query = query.Where(u => memberIds.Contains(u.Id));

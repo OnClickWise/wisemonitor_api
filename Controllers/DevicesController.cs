@@ -83,7 +83,7 @@ namespace WiseMonitor.Api.Controllers
             };
 
             var created = await _deviceService.CreateDeviceAsync(device, orgId);
-            return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
+            return CreatedAtAction(nameof(GetById), new { id = created.Id }, DeviceDto.From(created));
         }
 
         // GET api/devices
@@ -112,7 +112,7 @@ namespace WiseMonitor.Api.Controllers
                     .ToList();
             }
 
-            return Ok(devices);
+            return Ok(devices.Select(DeviceDto.From));
         }
 
         // ============================================================
@@ -200,7 +200,7 @@ namespace WiseMonitor.Api.Controllers
             if (device == null)
                 return NotFound();
 
-            return Ok(device);
+            return Ok(DeviceDto.From(device));
         }
 
         // ====================================================
@@ -304,7 +304,7 @@ namespace WiseMonitor.Api.Controllers
             if (resolvedUserName != null)
                 _liveService.UpdateDeviceUser(id.ToString(), dto.UserId!.Value.ToString(), resolvedUserName);
 
-            return Ok(updated);
+            return updated == null ? NotFound() : Ok(DeviceDto.From(updated));
         }
 
         // DELETE api/devices/{id}

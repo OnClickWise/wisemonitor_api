@@ -33,9 +33,14 @@ namespace WiseMonitor.Api.Models
         [Required]
         public DateTime EndedAt { get; set; }
 
-        // 🎞️ Vídeo
+        // 🎞️ Vídeo. Só nos segmentos enviados pelo upload antigo: os novos ficam no Cloud
+        // Storage (StorageKey) e aqui vai um array vazio.
         [Required]
         public byte[] VideoData { get; set; } = Array.Empty<byte>();
+
+        // ☁️ Nome do objeto no bucket (VIDEO_BUCKET); null = vídeo em VideoData.
+        [MaxLength(300)]
+        public string? StorageKey { get; set; }
 
         [MaxLength(50)]
         public string ContentType { get; set; } = "video/mp4";

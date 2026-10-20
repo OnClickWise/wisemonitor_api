@@ -12,9 +12,10 @@ namespace WiseMonitor.Api.Services
 {
     /// <summary>
     /// Até onde o usuário logado enxerga dentro da própria organização.
-    /// Supervisor fica restrito às equipes que administra (responsável ou administrador):
-    /// os membros delas e ele mesmo. Os demais papéis enxergam a organização inteira —
-    /// o que cada um pode FAZER continua sendo decidido pela RolePermissionMatrix.
+    /// Só administradores enxergam a organização inteira. Os demais papéis (gerente,
+    /// coordenador, supervisor...) ficam restritos às equipes que gerem (responsável ou
+    /// administrador): quem está abaixo deles nelas, e eles mesmos. O que cada um pode
+    /// FAZER continua sendo decidido pela RolePermissionMatrix.
     /// </summary>
     public sealed class AccessScope
     {
@@ -68,7 +69,11 @@ namespace WiseMonitor.Api.Services
         /// <summary>deviceId → usuário atribuído manualmente, para filtrar listas numa consulta só.</summary>
         Task<IReadOnlyDictionary<string, Guid>> GetAssignedDeviceUsersAsync(Guid organizationId);
 
+        /// <summary>Membros + responsável de uma equipe da organização (vazio se a equipe não existir).</summary>
+        Task<List<Guid>> GetTeamUserIdsAsync(Guid teamId, Guid organizationId);
+
         Task<ScheduleAccess> GetScheduleAccessAsync(ClaimsPrincipal user, Guid scheduleId);
+
 
         /// <summary>Acesso a cada jornada da organização do caller (as ocultas ficam de fora).</summary>
         Task<IReadOnlyDictionary<Guid, ScheduleAccess>> GetVisibleSchedulesAsync(ClaimsPrincipal user);
@@ -87,8 +92,7 @@ namespace WiseMonitor.Api.Services
             _context = context;
         }
 
-        public static bool IsRestrictedRole(string? role) =>
-            UserRoles.Normalize(role) == UserRoles.Supervisor;
+        public static bool IsRestrictedRole(string? role) => !UserRoles.IsAdmin(role);
 
         public async Task<AccessScope> GetScopeAsync(ClaimsPrincipal user)
         {
@@ -121,8 +125,25 @@ namespace WiseMonitor.Api.Services
                     })
                     .ToListAsync();
 
-                var userIds = teams
+                var candidateIds = teams
                     .SelectMany(t => t.MemberIds.Append(t.ManagerId))
+                    .Distinct()
+                    .ToList();
+
+                // Só quem está abaixo na hierarquia: o gerente vê os coordenadores das
+                // equipes dele, o coordenador vê os supervisores, e o supervisor só os
+                // membros. Quem está no mesmo nível ou acima (outro gestor da mesma
+                // equipe, o administrador responsável) fica de fora.
+                var myLevel = UserRoles.GetHierarchyLevel(role);
+                var roles = await _context.Users
+                    .AsNoTracking()
+                    .Where(u => u.OrganizationId == orgId && candidateIds.Contains(u.Id))
+                    .Select(u => new { u.Id, u.Role })
+                    .ToListAsync();
+
+                var userIds = roles
+                    .Where(u => UserRoles.GetHierarchyLevel(u.Role) > myLevel)
+                    .Select(u => u.Id)
                     .Append(userId)
                     .ToHashSet();
 
@@ -135,7 +156,21 @@ namespace WiseMonitor.Api.Services
             return scope;
         }
 
+        public async Task<List<Guid>> GetTeamUserIdsAsync(Guid teamId, Guid organizationId)
+        {
+            var team = await _context.Teams
+                .AsNoTracking()
+                .Where(t => t.Id == teamId && t.OrganizationId == organizationId)
+                .Select(t => new { t.ManagerId, MemberIds = t.Members.Select(m => m.UserId).ToList() })
+                .FirstOrDefaultAsync();
+
+            return team == null
+                ? new List<Guid>()
+                : team.MemberIds.Append(team.ManagerId).Distinct().ToList();
+        }
+
         public async Task<bool> CanAccessUserAsync(ClaimsPrincipal user, Guid targetUserId)
+
         {
             var scope = await GetScopeAsync(user);
             if (scope.OrganizationId == Guid.Empty || !scope.CanAccessUser(targetUserId))

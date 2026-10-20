@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -10,6 +11,9 @@ namespace WiseMonitor.Api.Repositories
 {
     public class VideoSegmentRepository : IVideoSegmentRepository
     {
+        private static readonly ConcurrentDictionary<string, DateTime> LastCleanup = new();
+        private static readonly TimeSpan CleanupInterval = TimeSpan.FromHours(1);
+
         private readonly AppDbContext _context;
 
         public VideoSegmentRepository(AppDbContext context)
@@ -36,8 +40,18 @@ namespace WiseMonitor.Api.Repositories
                 ContentType = v.ContentType,
                 SizeInBytes = v.SizeInBytes,
                 CreatedAt = v.CreatedAt,
+                StorageKey = v.StorageKey,
                 VideoData = Array.Empty<byte>()
             };
+
+        public async Task<VideoSegment?> GetMetadataByIdAsync(Guid id)
+        {
+            return await _context.VideoSegments
+                .AsNoTracking()
+                .Where(v => v.Id == id)
+                .Select(MetadataOnly)
+                .FirstOrDefaultAsync();
+        }
 
         public async Task<VideoSegment?> GetLatestAsync(string deviceId)
         {
@@ -74,7 +88,20 @@ namespace WiseMonitor.Api.Repositories
             await _context.VideoSegments.AddAsync(segment);
             await _context.SaveChangesAsync();
 
-            var cutoff = DateTime.UtcNow - retentionWindow;
+            // Retenção "de carona" no upload, no máximo uma vez por hora por máquina (ou
+            // quando a janela é menor que isso): rodar a cada segmento de 10s eram ~8 DELETEs
+            // por segundo no banco. Os arquivos no bucket somem pela regra de ciclo de vida.
+            var cleanupKey = $"{segment.OrganizationId}|{segment.DeviceId}";
+            var now = DateTime.UtcNow;
+            var interval = retentionWindow < CleanupInterval ? TimeSpan.Zero : CleanupInterval;
+            if (LastCleanup.TryGetValue(cleanupKey, out var last) && now - last < interval)
+                return;
+            // ExecuteDelete só existe em banco relacional (alguns testes usam o InMemory).
+            if (!_context.Database.IsRelational())
+                return;
+            LastCleanup[cleanupKey] = now;
+
+            var cutoff = now - retentionWindow;
             // Direto no banco: carregar as entidades trazia o MP4 de cada segmento só
             // para apagá-lo, a cada upload (~10s por máquina).
             await _context.VideoSegments

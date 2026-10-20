@@ -22,9 +22,26 @@ namespace WiseMonitor.Api.Services
             _logger = logger;
         }
 
-        public Task AddMemberAsync(Guid teamId, Guid userId, Guid organizationId)
+        public async Task AddMemberAsync(Guid teamId, Guid userId, Guid organizationId)
         {
-            throw new NotImplementedException();
+            var team = await _teamRepo.GetByIdAsync(teamId, organizationId)
+                ?? throw new KeyNotFoundException("Equipe não encontrada.");
+
+            // Já é membro (ou administrador): nada a fazer.
+            if (team.Members.Any(m => m.UserId == userId))
+                return;
+
+            var user = await _userRepo.GetByIdAsync(userId, organizationId)
+                ?? throw new KeyNotFoundException("Usuário não encontrado na organização.");
+
+            team.Members.Add(new TeamMember
+            {
+                TeamId = team.Id,
+                UserId = user.Id,
+                IsManager = false
+            });
+
+            await _teamRepo.UpdateAsync(team);
         }
 
         public async Task CreateAsync(CreateTeamDTO dto, Guid organizationId)
@@ -35,13 +52,8 @@ namespace WiseMonitor.Api.Services
 
             
             var normalizedRole = UserRoles.Normalize(manager.Role);
-            var managerRoles = new[]
-            {
-                UserRoles.TenantAdmin, UserRoles.Director, UserRoles.Manager,
-                UserRoles.Supervisor, UserRoles.ProjectManager, UserRoles.SuperAdmin
-            };
 
-            if (!managerRoles.Contains(normalizedRole))
+            if (!UserRoles.TeamLeads.Contains(normalizedRole))
             {
                 _logger.LogWarning("Permissão insuficiente para responsável de equipe. Role: {Role}", manager.Role);
                 throw new Exception($"Usuário não tem permissão para ser responsável. Cargo atual: {manager.Role}");
@@ -167,6 +179,28 @@ namespace WiseMonitor.Api.Services
                         Role = m.User.Role
                     }).ToList()
             };
+        }
+
+        public async Task<List<ManagedTeamDTO>> GetManagedTeamsAsync(Guid userId, Guid organizationId)
+        {
+            var teams = await _teamRepo.GetAllAsync(organizationId);
+
+            return teams
+                .Where(t => t.ManagerId == userId || t.Members.Any(m => m.UserId == userId && m.IsManager))
+                .OrderBy(t => t.Name)
+                .Select(t => new ManagedTeamDTO { TeamId = t.Id, Name = t.Name, IsResponsible = t.ManagerId == userId })
+                .ToList();
+        }
+
+        public async Task SetManagedTeamsAsync(Guid userId, IReadOnlyCollection<Guid> teamIds, Guid organizationId)
+        {
+            var user = await _userRepo.GetByIdAsync(userId, organizationId)
+                ?? throw new KeyNotFoundException("Usuário não encontrado na organização.");
+
+            if (!UserRoles.TeamLeads.Contains(UserRoles.Normalize(user.Role)))
+                throw new InvalidOperationException("Só gestores (gerente, coordenador, supervisor...) podem gerir equipes.");
+
+            await _teamRepo.SetManagedTeamsAsync(userId, teamIds, organizationId);
         }
 
         public async Task RemoveMemberAsync(Guid teamId, Guid userId, Guid organizationId)

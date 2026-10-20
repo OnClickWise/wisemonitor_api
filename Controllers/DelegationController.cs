@@ -17,11 +17,13 @@ namespace WiseMonitor.Api.Controllers
     {
         private readonly IDelegationService _service;
         private readonly IAuditService _audit;
+        private readonly IAccessScopeService _scopeService;
 
-        public DelegationController(IDelegationService service, IAuditService audit)
+        public DelegationController(IDelegationService service, IAuditService audit, IAccessScopeService scopeService)
         {
             _service = service;
             _audit = audit;
+            _scopeService = scopeService;
         }
 
         [HttpGet]
@@ -30,6 +32,12 @@ namespace WiseMonitor.Api.Controllers
         {
             var orgId = User.GetOrganizationId();
             var result = await _service.GetAllAsync(orgId);
+
+            // Fora dos administradores: só delegações entre pessoas do próprio escopo.
+            var scope = await _scopeService.GetScopeAsync(User);
+            if (scope.IsRestricted)
+                result = result.Where(d => scope.CanAccessUser(d.DelegatorId) && scope.CanAccessUser(d.DelegateId)).ToList();
+
             return Ok(result);
         }
 
@@ -48,6 +56,12 @@ namespace WiseMonitor.Api.Controllers
         {
             var orgId = User.GetOrganizationId();
             var userId = User.GetUserId();
+
+            // Delegar só para quem está no próprio escopo, e só equipes que gere.
+            var scope = await _scopeService.GetScopeAsync(User);
+            if (!await _scopeService.CanAccessUserAsync(User, dto.DelegateId) ||
+                dto.Scope.TeamIds.Any(t => !scope.CanAccessTeam(t)))
+                return Forbid();
 
             var result = await _service.CreateAsync(dto, orgId, userId);
 

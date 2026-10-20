@@ -110,6 +110,14 @@ public class AppFocusService : IAppFocusService
         return events;
     }
 
+    public async Task<IEnumerable<AppFocusEvent>> GetDeviceHistoryAsync(
+        Guid organizationId, Guid deviceId, DateTime start, DateTime end)
+    {
+        var events = await _repository.GetByDeviceRangeAsync(organizationId, deviceId, start, end);
+        StripRepeatedIcons(events);
+        return events;
+    }
+
     // O mesmo ícone em Base64 vinha repetido em cada evento do programa (milhares por dia),
     // e era a maior parte do payload. Mantém só na primeira ocorrência de cada programa;
     // o frontend (getAppFocusEventsByUser) redistribui para os demais eventos.

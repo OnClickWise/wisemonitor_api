@@ -1454,6 +1454,10 @@ namespace WiseMonitor.Api.Migrations
                     b.Property<DateTime>("StartedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("StorageKey")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
                     b.Property<byte[]>("VideoData")
                         .IsRequired()
                         .HasColumnType("bytea");

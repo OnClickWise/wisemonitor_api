@@ -142,7 +142,7 @@ namespace WiseMonitor.Api.Middlewares
                                       await scopeService.CanAccessDeviceAsync(principal!, msg.DeviceId);
 
                                 if (canWatch)
-                                    liveService.AddWatcher(msg.DeviceId, sessionId);
+                                    liveService.AddWatcher(msg.DeviceId, sessionId, msg.MaxFps);
                                 break;
                             case "unwatch":
                                 liveService.RemoveWatcher(msg.DeviceId, sessionId);
@@ -180,6 +180,8 @@ namespace WiseMonitor.Api.Middlewares
         {
             public string? Type { get; set; }
             public string? DeviceId { get; set; }
+            // Teto de fps pedido pelo espectador (a grade ao vivo pede poucos por tela).
+            public int MaxFps { get; set; }
         }
     }
 }

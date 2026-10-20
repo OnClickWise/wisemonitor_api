@@ -23,6 +23,21 @@ namespace WiseMonitor.Api.DTOs.Team
         public string? WorkScheduleName { get; set; }
     }
 
+    /// <summary>Equipe que um gestor (gerente, coordenador, supervisor) gere.</summary>
+    public class ManagedTeamDTO
+    {
+        public Guid TeamId { get; set; }
+        public string Name { get; set; } = string.Empty;
+
+        /// <summary>Responsável principal: só sai trocando o responsável na própria equipe.</summary>
+        public bool IsResponsible { get; set; }
+    }
+
+    public class SetManagedTeamsDTO
+    {
+        public List<Guid> TeamIds { get; set; } = new();
+    }
+
     public class TeamMemberDTO
     {
         public Guid UserId { get; set; }

@@ -171,6 +171,7 @@ builder.Services.AddScoped<IOrganizationService,        OrganizationService>();
 builder.Services.AddScoped<IDeviceService,              DeviceService>();
 builder.Services.AddScoped<IScreenshotService,          ScreenshotService>();
 builder.Services.AddScoped<IVideoSegmentService,        VideoSegmentService>();
+builder.Services.AddSingleton<IVideoStorageService,     VideoStorageService>();
 builder.Services.AddScoped<IAppFocusService,            AppFocusService>();
 builder.Services.AddScoped<IReportDataService,          ReportDataService>();
 builder.Services.AddScoped<IReportPdfService,           ReportPdfService>();
@@ -245,6 +246,24 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ITenantContext, TenantContext>();
 
 // =======================
+// Compressão das respostas
+// =======================
+// As listas de atividades da empresa passam de dezenas de MB em JSON cru (um dia
+// inteiro chegava a 40 MB); comprimido fica cerca de 10x menor. Vídeo e imagem
+// (mp4/jpeg) já são comprimidos e ficam de fora — os tipos padrão são só texto/JSON.
+builder.Services.AddResponseCompression(options =>
+{
+    // O TLS termina no Cloud Run; o app recebe HTTP.
+    options.EnableForHttps = true;
+    options.Providers.Add<Microsoft.AspNetCore.ResponseCompression.BrotliCompressionProvider>();
+    options.Providers.Add<Microsoft.AspNetCore.ResponseCompression.GzipCompressionProvider>();
+});
+builder.Services.Configure<Microsoft.AspNetCore.ResponseCompression.BrotliCompressionProviderOptions>(o =>
+    o.Level = System.IO.Compression.CompressionLevel.Fastest);
+builder.Services.Configure<Microsoft.AspNetCore.ResponseCompression.GzipCompressionProviderOptions>(o =>
+    o.Level = System.IO.Compression.CompressionLevel.Fastest);
+
+// =======================
 // Controllers
 // =======================
 builder.Services.AddControllers();
@@ -269,7 +288,11 @@ builder.Services.AddCors(options =>
         policy.WithOrigins(allowedOrigins)
               .AllowAnyHeader()
               .AllowAnyMethod()
-              .AllowCredentials());
+              .AllowCredentials()
+              // Toda chamada do painel leva Authorization, então o navegador manda um
+              // OPTIONS antes. Sem max-age ele só guarda isso por 5s: quase toda requisição
+              // pagava uma ida e volta extra ao servidor. 2h é o teto do Chrome.
+              .SetPreflightMaxAge(TimeSpan.FromHours(2)));
 });
 
 // =======================
@@ -365,6 +388,36 @@ app.Urls.Add($"http://0.0.0.0:{port}");
 Log.Information("API rodando na porta {Port}", port);
 
 // =======================
+// UPLOADS DESATIVÁVEIS
+// =======================
+// Os agents mandam um vídeo de 10s de cada máquina a cada 10s (~8 uploads/s, ~2,8 GB/h
+// com 80 máquinas) e uma captura de tela por minuto. Cada vídeo do upload antigo é lido
+// inteiro na memória e gravado no banco — em carga isso satura a instância e o banco.
+// VIDEO_SEGMENTS_ENABLED=false / SCREENSHOTS_ENABLED=false desligam: respondem 204 (o agent
+// trata como sucesso e apaga o arquivo, sem fila de reenvio) antes de ler o corpo.
+// Ligados por padrão — capturas de tela fazem parte dos planos. O upload direto ao
+// Cloud Storage (video-segments/upload-url) não passa por aqui.
+var videoSegmentsEnabled = !string.Equals(Environment.GetEnvironmentVariable("VIDEO_SEGMENTS_ENABLED"), "false", StringComparison.OrdinalIgnoreCase);
+var screenshotsEnabled = !string.Equals(Environment.GetEnvironmentVariable("SCREENSHOTS_ENABLED"), "false", StringComparison.OrdinalIgnoreCase);
+app.Use(async (context, next) =>
+{
+    if (HttpMethods.IsPost(context.Request.Method))
+    {
+        // Com ou sem /api: depende do ApiEndpoint salvo na configuração de cada agent.
+        var path = context.Request.Path.Value?.TrimEnd('/') ?? "";
+        if ((!videoSegmentsEnabled && path.EndsWith("/video-segments/upload", StringComparison.OrdinalIgnoreCase)) ||
+            (!screenshotsEnabled && path.EndsWith("/screenshots/upload", StringComparison.OrdinalIgnoreCase)))
+        {
+            // Fecha a conexão em vez de esperar o resto do arquivo chegar.
+            context.Response.Headers.Connection = "close";
+            context.Response.StatusCode = StatusCodes.Status204NoContent;
+            return;
+        }
+    }
+    await next();
+});
+
+// =======================
 // Swagger (somente Development)
 // =======================
 if (app.Environment.IsDevelopment())
@@ -383,6 +436,7 @@ app.UseMiddleware<SecurityHeadersMiddleware>();
 if (!app.Environment.IsDevelopment())
     app.UseHsts();
 
+app.UseResponseCompression();
 app.UseRouting();
 app.UseCors("Default");
 app.UseRateLimiter();

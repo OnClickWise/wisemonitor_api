@@ -31,8 +31,9 @@ namespace WiseMonitor.Api.Services
         private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, WebSocket>> _adminSockets = new();
         private readonly ConcurrentDictionary<string, MonitoringMessageDto> _liveDevices = new();
 
-        // deviceId -> conjunto de sessionIds de viewers assistindo esse device agora
-        private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, byte>> _watchers = new();
+        // deviceId -> (sessionId -> limite de fps) — quem está com a tela do device aberta
+        // agora. 0 = sem limite (página do device); a grade pede poucos fps por tela.
+        private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, int>> _watchers = new();
 
         // sessionId -> usuários que essa conexão pode ver. Só existe para conexões
         // restritas (supervisor); sem entrada = vê a organização inteira.
@@ -165,12 +166,13 @@ namespace WiseMonitor.Api.Services
         // ================================
         // WATCHERS (quem está assistindo cada device agora)
         // ================================
-        public void AddWatcher(string deviceId, string sessionId)
+        // maxFps: teto de frames por segundo para esse espectador (0 = sem limite).
+        public void AddWatcher(string deviceId, string sessionId, int maxFps = 0)
         {
-            var set = _watchers.GetOrAdd(deviceId, _ => new ConcurrentDictionary<string, byte>());
+            var set = _watchers.GetOrAdd(deviceId, _ => new ConcurrentDictionary<string, int>());
             var wasEmpty = set.IsEmpty;
-            set[sessionId] = 0;
-            _logger.LogInformation("[Watcher+] Device={DeviceId}, Session={SessionId}, Total={Total}", deviceId, sessionId, set.Count);
+            set[sessionId] = Math.Max(0, maxFps);
+            _logger.LogInformation("[Watcher+] Device={DeviceId}, Session={SessionId}, MaxFps={MaxFps}, Total={Total}", deviceId, sessionId, maxFps, set.Count);
 
             if (wasEmpty)
                 WatchStateChanged?.Invoke(deviceId, true);
@@ -244,25 +246,29 @@ namespace WiseMonitor.Api.Services
         /// usa isso para mandar o frame só a quem está olhando, em vez de transmitir
         /// para toda a organização.
         /// </summary>
-        public IReadOnlyList<WebSocket> GetWatcherSockets(string deviceId)
+        public IReadOnlyList<WebSocket> GetWatcherSockets(string deviceId) =>
+            GetWatchers(deviceId).Select(w => w.Socket).ToList();
+
+        /// <summary>Espectadores do device com o limite de fps que cada um pediu (0 = sem limite).</summary>
+        public IReadOnlyList<(WebSocket Socket, int MaxFps)> GetWatchers(string deviceId)
         {
             if (!_watchers.TryGetValue(deviceId, out var deviceWatchers) || deviceWatchers.IsEmpty)
-                return Array.Empty<WebSocket>();
+                return Array.Empty<(WebSocket, int)>();
 
-            var sockets = new List<WebSocket>();
+            var watchers = new List<(WebSocket, int)>();
 
             // O sessionId do watcher é a chave do socket dentro da org; como o watcher
             // não guarda a org, procura em todas (são poucas conexões de admin).
             foreach (var orgAdmins in _adminSockets.Values)
             {
-                foreach (var sessionId in deviceWatchers.Keys)
+                foreach (var (sessionId, maxFps) in deviceWatchers)
                 {
                     if (orgAdmins.TryGetValue(sessionId, out var socket))
-                        sockets.Add(socket);
+                        watchers.Add((socket, maxFps));
                 }
             }
 
-            return sockets;
+            return watchers;
         }
 
         // ================================
@@ -419,13 +425,41 @@ namespace WiseMonitor.Api.Services
         // ================================
         // BROADCAST
         // ================================
+        /// <summary>
+        /// Janela em que os avisos de uma organização são juntados num só. Cada heartbeat
+        /// (um a cada 30s por máquina) reenviava a lista inteira da org a todos os painéis:
+        /// com 100 máquinas, ~3 listas completas por segundo para cada painel aberto.
+        /// </summary>
+        public TimeSpan BroadcastWindow { get; set; } = TimeSpan.FromSeconds(1);
+
+        private readonly ConcurrentDictionary<string, byte> _pendingBroadcasts = new();
+
         public Task BroadcastFrameAsync(string deviceId, MonitoringMessageDto frame)
         {
             var orgId = frame.OrgId ?? "default";
             _logger.LogDebug("[Broadcast] Org={OrgId}, Device={DeviceId}", orgId, deviceId);
 
-            // Manda TODOS os devices da org para o front sempre ter um estado consistente.
-            return SendDevicesUpdateAsync(orgId);
+            // Já tem um envio agendado para essa org: ele vai levar este estado também.
+            if (!_pendingBroadcasts.TryAdd(orgId, 0))
+                return Task.CompletedTask;
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(BroadcastWindow);
+                }
+                finally
+                {
+                    // Sai da fila antes de enviar: mudança durante o envio agenda o próximo.
+                    _pendingBroadcasts.TryRemove(orgId, out _);
+                }
+
+                // Manda TODOS os devices da org para o front sempre ter um estado consistente.
+                await SendDevicesUpdateAsync(orgId);
+            });
+
+            return Task.CompletedTask;
         }
 
         // Lista completa de devices da org — cada conexão recebe só os que pode ver.

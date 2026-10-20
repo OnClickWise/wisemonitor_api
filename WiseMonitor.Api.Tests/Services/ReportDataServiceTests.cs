@@ -32,6 +32,7 @@ class FakeAppFocusService : IAppFocusService
     public Task UpdateAsync(Guid id, AppFocusEventUpdateDTO dto, Guid organizationId) => throw new NotImplementedException();
     public Task DeleteAsync(Guid id, Guid organizationId) => throw new NotImplementedException();
     public Task<IEnumerable<object>> GetMetricsAsync(Guid userId, DateTime date) => throw new NotImplementedException();
+    public Task<IEnumerable<AppFocusEvent>> GetDeviceHistoryAsync(Guid organizationId, Guid deviceId, DateTime start, DateTime end) => throw new NotImplementedException();
 }
 
 class FakeTeamService : ITeamService
@@ -47,6 +48,8 @@ class FakeTeamService : ITeamService
     public Task DeleteAsync(Guid teamId, Guid organizationId) => throw new NotImplementedException();
     public Task AddMemberAsync(Guid teamId, Guid userId, Guid organizationId) => throw new NotImplementedException();
     public Task RemoveMemberAsync(Guid teamId, Guid userId, Guid organizationId) => throw new NotImplementedException();
+    public Task<List<ManagedTeamDTO>> GetManagedTeamsAsync(Guid userId, Guid organizationId) => throw new NotImplementedException();
+    public Task SetManagedTeamsAsync(Guid userId, IReadOnlyCollection<Guid> teamIds, Guid organizationId) => throw new NotImplementedException();
 }
 
 class FakeUserService : IUserService
@@ -69,6 +72,7 @@ file class FakeTeamRepository : ITeamRepository
     public Task<List<Team>> GetAllAsync(Guid organizationId) => throw new NotImplementedException();
     public Task<Team?> GetByUserIdAsync(Guid userId, Guid organizationId) => Task.FromResult<Team?>(null);
     public Task<List<Guid>> GetManagedMemberIdsAsync(Guid managerUserId, Guid organizationId) => Task.FromResult(new List<Guid>());
+    public Task SetManagedTeamsAsync(Guid userId, IReadOnlyCollection<Guid> teamIds, Guid organizationId) => throw new NotImplementedException();
     public Task UpdateAsync(Team team) => throw new NotImplementedException();
     public Task DeleteAsync(Team team) => throw new NotImplementedException();
 }

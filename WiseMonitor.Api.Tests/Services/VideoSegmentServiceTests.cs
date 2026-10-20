@@ -27,12 +27,13 @@ file class FakeLiveMonitoringService : ILiveMonitoringService
     public bool CanSessionSeeDevice(string sessionId, string deviceId) => true;
     public IReadOnlyCollection<WiseMonitor.Api.DTOs.MonitoringMessageDto> GetAllLiveDevicesForSession(string orgId, string sessionId) => Array.Empty<WiseMonitor.Api.DTOs.MonitoringMessageDto>();
     public void UnregisterAdmin(string orgId, string sessionId) { }
-    public void AddWatcher(string deviceId, string sessionId) { }
+    public void AddWatcher(string deviceId, string sessionId, int maxFps = 0) { }
     public void RemoveWatcher(string deviceId, string sessionId) { }
     public void RemoveWatcherFromAllDevices(string sessionId) { }
     public event Action<string, bool>? WatchStateChanged;
     public bool IsWatched(string deviceId) => false;
     public IReadOnlyList<System.Net.WebSockets.WebSocket> GetWatcherSockets(string deviceId) => Array.Empty<System.Net.WebSockets.WebSocket>();
+    public IReadOnlyList<(System.Net.WebSockets.WebSocket Socket, int MaxFps)> GetWatchers(string deviceId) => Array.Empty<(System.Net.WebSockets.WebSocket, int)>();
     public void MarkDeviceOffline(string deviceId) { }
     public IReadOnlyCollection<string> BroadcastExpiredDevices() => Array.Empty<string>();
     public IReadOnlyList<WiseMonitor.Api.DTOs.MonitoringMessageDto> GetCachedMessages(string orgId) => Array.Empty<WiseMonitor.Api.DTOs.MonitoringMessageDto>();
@@ -45,6 +46,15 @@ file class FakeLiveMonitoringService : ILiveMonitoringService
         NotifyCallCount++;
         return Task.CompletedTask;
     }
+}
+
+file class NoBucketStorage : IVideoStorageService
+{
+    public bool IsEnabled => false;
+    public string BuildObjectName(Guid organizationId, Guid segmentId) => throw new NotSupportedException();
+    public Task<string> CreateUploadUrlAsync(string objectName) => throw new NotSupportedException();
+    public Task<string> CreateReadUrlAsync(string objectName) => throw new NotSupportedException();
+    public Task DownloadToFileAsync(string objectName, string path) => throw new NotSupportedException();
 }
 
 public class VideoSegmentServiceTests
@@ -201,7 +211,7 @@ public class VideoSegmentServiceTests
         await db.SaveChangesAsync();
 
         var service = new VideoSegmentService(
-            new VideoSegmentRepository(db), db, new FakeLiveMonitoringService(), CreateConfig());
+            new VideoSegmentRepository(db), db, new FakeLiveMonitoringService(), new NoBucketStorage(), CreateConfig());
 
         var history = (await service.GetHistoryWithContextAsync(
             deviceId, segmentStart.AddMinutes(-1), segmentEnd.AddMinutes(1), "http://localhost:8080")).ToList();
@@ -224,7 +234,7 @@ public class VideoSegmentServiceTests
     {
         var db = CreateRelationalDb();
         var fakeLive = new FakeLiveMonitoringService();
-        var service = new VideoSegmentService(new VideoSegmentRepository(db), db, fakeLive, CreateConfig());
+        var service = new VideoSegmentService(new VideoSegmentRepository(db), db, fakeLive, new NoBucketStorage(), CreateConfig());
 
         using var stream = new MemoryStream(new byte[] { 1, 2, 3, 4 });
         var formFile = new Microsoft.AspNetCore.Http.FormFile(stream, 0, stream.Length, "Segment", "segment.mp4")

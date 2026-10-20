@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using WiseMonitor.Api.Authorization;
 using WiseMonitor.Api.DTOs;
+using WiseMonitor.Api.Extensions;
 using WiseMonitor.Api.Models.Billing;
 using WiseMonitor.Api.Services;
 
@@ -57,6 +58,49 @@ namespace WiseMonitor.Api.Controllers
         }
 
         // ============================
+        // ☁️ UPLOAD DIRETO AO CLOUD STORAGE — 1) pede a URL, 2) PUT no bucket, 3) confirma
+        // ============================
+        // O MP4 não passa pela API nem pelo Postgres. 204 = bucket desligado no servidor
+        // (VIDEO_BUCKET vazio): o agent volta ao upload antigo (multipart em /upload).
+        [HttpPost("upload-url")]
+        public async Task<IActionResult> CreateUploadUrl()
+        {
+            var orgId = User.GetOrganizationId();
+            if (orgId == Guid.Empty)
+                return Forbid();
+
+            var ticket = await _videoSegmentService.CreateUploadTicketAsync(orgId);
+            if (ticket == null)
+                return NoContent();
+
+            return Ok(ticket);
+        }
+
+        [HttpPost("confirm")]
+        public async Task<IActionResult> ConfirmUpload([FromBody] VideoSegmentConfirmDTO dto)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            if (dto.EndedAt < dto.StartedAt)
+                return BadRequest(new { message = "'EndedAt' deve ser posterior a 'StartedAt'." });
+
+            var orgId = User.GetOrganizationId();
+            if (orgId == Guid.Empty)
+                return Forbid();
+
+            try
+            {
+                var result = await _videoSegmentService.ConfirmUploadAsync(orgId, dto, GetBaseUrl());
+                return Ok(result);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        // ============================
         // 📥 DOWNLOAD/STREAM POR ID (com suporte a Range para o <video> tag)
         // ============================
         [HttpGet("{id:guid}")]
@@ -69,6 +113,15 @@ namespace WiseMonitor.Api.Controllers
             // não se aplica a requisições anônimas.
             if (!_videoSegmentService.ValidateAccess(id, exp, sig))
                 return Unauthorized();
+
+            // Segmento no bucket: o navegador segue o redirect e baixa direto do Cloud
+            // Storage (com suporte a Range), sem os bytes passarem pela API.
+            var metadata = await _videoSegmentService.GetMetadataByIdAsync(id);
+            if (metadata == null)
+                return NotFound();
+
+            if (metadata.StorageKey != null)
+                return Redirect(await _videoSegmentService.CreateReadUrlAsync(metadata.StorageKey));
 
             var segment = await _videoSegmentService.GetByIdAsync(id);
             if (segment == null)
@@ -103,7 +156,8 @@ namespace WiseMonitor.Api.Controllers
         public async Task<IActionResult> GetHistory(
             [FromQuery] string deviceId,
             [FromQuery] DateTime from,
-            [FromQuery] DateTime to)
+            [FromQuery] DateTime to,
+            [FromQuery] Guid? userId)
         {
             if (string.IsNullOrWhiteSpace(deviceId))
                 return BadRequest(new { message = "deviceId é obrigatório." });
@@ -114,8 +168,11 @@ namespace WiseMonitor.Api.Controllers
             if (!await _scopeService.CanAccessDeviceAsync(User, deviceId))
                 return NotFound();
 
+            if (userId.HasValue && !await _scopeService.CanAccessUserAsync(User, userId.Value))
+                return NotFound();
+
             var baseUrl = GetBaseUrl();
-            var history = await _videoSegmentService.GetHistoryWithContextAsync(deviceId, from, to, baseUrl);
+            var history = await _videoSegmentService.GetHistoryWithContextAsync(deviceId, from, to, baseUrl, userId);
 
             return Ok(history);
         }

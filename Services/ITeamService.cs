@@ -34,5 +34,11 @@ namespace WiseMonitor.Api.Services
         // ===============================
         Task AddMemberAsync(Guid teamId, Guid userId, Guid organizationId);
         Task RemoveMemberAsync(Guid teamId, Guid userId, Guid organizationId);
+
+        // ===============================
+        // 🧭 EQUIPES QUE UM GESTOR GERE
+        // ===============================
+        Task<List<ManagedTeamDTO>> GetManagedTeamsAsync(Guid userId, Guid organizationId);
+        Task SetManagedTeamsAsync(Guid userId, IReadOnlyCollection<Guid> teamIds, Guid organizationId);
     }
 }

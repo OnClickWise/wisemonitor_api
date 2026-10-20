@@ -45,4 +45,10 @@ public interface IAppFocusService
         Guid userId, 
         DateTime start, 
         DateTime end);
+
+    Task<IEnumerable<AppFocusEvent>> GetDeviceHistoryAsync(
+        Guid organizationId,
+        Guid deviceId,
+        DateTime start,
+        DateTime end);
 }

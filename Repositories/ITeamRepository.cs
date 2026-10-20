@@ -17,9 +17,19 @@ namespace WiseMonitor.Api.Repositories
         /// <summary>
         /// Ids de todos os usuários (administradores e membros comuns) das equipes
         /// em que o usuário informado atua como administrador (Team.ManagerId ou
-        /// TeamMember.IsManager). Usado para restringir supervisores à própria equipe.
+        /// TeamMember.IsManager), filtrados pela hierarquia — só quem está abaixo
+        /// dele, mais ele mesmo. Usado para restringir quem não é administrador.
         /// </summary>
         Task<List<Guid>> GetManagedMemberIdsAsync(Guid managerUserId, Guid organizationId);
+
+        /// <summary>
+        /// Define as equipes que o usuário gere: vira administrador das informadas e
+        /// deixa as demais. Equipes em que ele é o responsável principal continuam.
+        /// </summary>
+        Task SetManagedTeamsAsync(
+            Guid userId,
+            IReadOnlyCollection<Guid> teamIds,
+            Guid organizationId);
 
         Task UpdateAsync(Team team);
         Task DeleteAsync(Team team);

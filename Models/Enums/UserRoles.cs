@@ -6,6 +6,7 @@ namespace WiseMonitor.Api.Models.Enums
         public const string TenantAdmin   = "TenantAdmin";
         public const string Director      = "Director";
         public const string Manager       = "Manager";
+        public const string Coordinator   = "Coordinator";
         public const string Supervisor    = "Supervisor";
         public const string Employee      = "Employee";
         public const string Auditor       = "Auditor";
@@ -20,30 +21,37 @@ namespace WiseMonitor.Api.Models.Enums
 
         public static readonly string[] All =
         [
-            SuperAdmin, TenantAdmin, Director, Manager, Supervisor,
+            SuperAdmin, TenantAdmin, Director, Manager, Coordinator, Supervisor,
             Employee, Auditor, HR, Financial, ProjectManager, Client
         ];
 
         public static readonly string[] TenantLevel =
         [
-            TenantAdmin, Director, Manager, Supervisor,
+            TenantAdmin, Director, Manager, Coordinator, Supervisor,
             Employee, Auditor, HR, Financial, ProjectManager, Client
         ];
 
+        /// <summary>Papéis que podem gerir equipes (responsável ou administrador da equipe).</summary>
+        public static readonly string[] TeamLeads =
+        [
+            SuperAdmin, TenantAdmin, Director, Manager, Coordinator, Supervisor, ProjectManager
+        ];
+
         // Hierarquia numérica (menor = mais poder)
-        public static int GetHierarchyLevel(string role) => role switch
+        public static int GetHierarchyLevel(string? role) => Normalize(role) switch
         {
             SuperAdmin     => 0,
             TenantAdmin    => 1,
             Director       => 2,
             Manager        => 3,
-            Supervisor     => 4,
-            HR             => 5,
-            Financial      => 5,
-            Auditor        => 5,
-            ProjectManager => 5,
-            Employee       => 6,
-            Client         => 7,
+            Coordinator    => 4,
+            Supervisor     => 5,
+            HR             => 6,
+            Financial      => 6,
+            Auditor        => 6,
+            ProjectManager => 6,
+            Employee       => 7,
+            Client         => 8,
             _              => 99
         };
 
@@ -80,6 +88,13 @@ namespace WiseMonitor.Api.Models.Enums
 
             return GetHierarchyLevel(Normalize(targetCurrentRole)) > GetHierarchyLevel(caller);
         }
+
+        /// <summary>
+        /// Só os administradores enxergam a organização inteira. Os demais papéis ficam
+        /// restritos às equipes que gerem (ver AccessScopeService).
+        /// </summary>
+        public static bool IsAdmin(string? role) =>
+            Normalize(role) is SuperAdmin or TenantAdmin;
 
         public static string Normalize(string? role) => role?.Trim() switch
         {

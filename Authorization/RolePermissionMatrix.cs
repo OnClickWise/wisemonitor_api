@@ -80,6 +80,21 @@ namespace WiseMonitor.Api.Authorization
                 Permissions.DelegationsCreate, Permissions.DelegationsView,
             },
 
+            // Coordenador: mesmas ações do supervisor; enxerga as equipes que gere,
+            // incluindo os supervisores delas (AccessScopeService).
+            [UserRoles.Coordinator] = new HashSet<string>
+            {
+                Permissions.UsersView,
+                Permissions.TeamsEdit,
+                Permissions.SchedulesManage,
+                Permissions.ReportsView, Permissions.ReportsExport,
+                Permissions.ScreenshotsView,
+                Permissions.ActivityView, Permissions.ActivityExport,
+                Permissions.LivestreamView,
+                Permissions.SystemMetricsView,
+                Permissions.DelegationsCreate, Permissions.DelegationsView,
+            },
+
             // Supervisor: tudo restrito às equipes que administra (AccessScopeService).
             [UserRoles.Supervisor] = new HashSet<string>
             {

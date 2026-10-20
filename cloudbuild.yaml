@@ -29,5 +29,27 @@ steps:
         # /ws/monitor (painel) e /ws/agent-stream (tela ao vivo) seriam derrubados a
         # cada 5 minutos e precisariam reconectar.
         '--timeout',
-        '3600'
+        '3600',
+        # Cada WebSocket aberto (um por agent em /ws/agent-stream e um por painel em
+        # /ws/monitor) ocupa uma vaga de concorrência pela hora inteira. Com o padrão
+        # de 80 por instância, as vagas acabavam e o Cloud Run respondia 429
+        # "Rate exceeded." a todas as requisições normais do painel.
+        '--concurrency',
+        '1000',
+        # O repasse da tela ao vivo e o cache de presença vivem na memória da
+        # instância: com duas, o agent cai numa e o painel em outra.
+        '--max-instances',
+        '1',
+        # Os agents mantêm conexão aberta o dia todo; sem instância mínima, o primeiro
+        # acesso depois de um período parado esperava a instância subir.
+        '--min-instances',
+        '1',
+        # Uma instância só atende todos os agents (WebSockets, heartbeats, atividades,
+        # teclado/mouse) e o painel. No padrão (1 vCPU, 512 MB) ela saturava: até o
+        # /health levava 20s e o Cloud Run passava a responder 429.
+        '--cpu',
+        '2',
+        '--memory',
+        '2Gi',
+        '--cpu-boost'
       ]

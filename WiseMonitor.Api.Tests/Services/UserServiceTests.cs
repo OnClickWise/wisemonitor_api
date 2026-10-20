@@ -20,6 +20,7 @@ public class UserServiceTests
         public Task<List<Team>> GetAllAsync(Guid organizationId) => Task.FromResult(new List<Team>());
         public Task<Team?> GetByUserIdAsync(Guid userId, Guid organizationId) => Task.FromResult<Team?>(null);
         public Task<List<Guid>> GetManagedMemberIdsAsync(Guid managerUserId, Guid organizationId) => Task.FromResult(new List<Guid>());
+        public Task SetManagedTeamsAsync(Guid userId, IReadOnlyCollection<Guid> teamIds, Guid organizationId) => Task.CompletedTask;
         public Task UpdateAsync(Team team) => Task.CompletedTask;
         public Task DeleteAsync(Team team) => Task.CompletedTask;
     }

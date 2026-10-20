@@ -106,11 +106,129 @@ public class AccessScopeServiceTests
         Assert.False(scope.CanAccessTeam(TeamC));
     }
 
+    [Fact]
+    public async Task Supervisor_NaoVeOutroGestorDaMesmaEquipe()
+    {
+        var svc = new AccessScopeService(CreateDb());
+
+        // Na Equipe B o responsável é outro supervisor: mesmo nível, fica de fora.
+        var scope = await svc.GetScopeAsync(As(Supervisor, "Supervisor"));
+
+        Assert.False(scope.CanAccessUser(OtherSupervisor));
+    }
+
+    [Theory]
+    [InlineData("Manager")]
+    [InlineData("Coordinator")]
+    [InlineData("Director")]
+    [InlineData("HR")]
+    [InlineData("Employee")]
+    public async Task QuemNaoEAdmin_SemEquipesSoVeASiMesmo(string role)
+    {
+        var svc = new AccessScopeService(CreateDb());
+
+        var scope = await svc.GetScopeAsync(As(MemberC, role));
+
+        Assert.True(scope.IsRestricted);
+        Assert.True(scope.CanAccessUser(MemberC));
+        Assert.False(scope.CanAccessUser(MemberA));
+        Assert.Empty(scope.TeamIds);
+    }
+
+    [Fact]
+    public async Task Hierarquia_GerenteVeCoordenadoresECoordenadorVeSupervisores()
+    {
+        var db = new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options);
+
+        Guid gerente = Guid.NewGuid(), coord = Guid.NewGuid(), sup = Guid.NewGuid(),
+             membro = Guid.NewGuid(), admin = Guid.NewGuid(), membroFora = Guid.NewGuid();
+        Guid equipe = Guid.NewGuid(), equipeFora = Guid.NewGuid();
+
+        User U(Guid id, string role) => new()
+        {
+            Id = id, FirstName = role, LastName = "Teste", Email = $"{id}@x.com",
+            PasswordHash = "x", Role = role, IsActive = true, OrganizationId = Org
+        };
+
+        db.Users.AddRange(U(gerente, "Manager"), U(coord, "Coordinator"), U(sup, "Supervisor"),
+            U(membro, "Employee"), U(admin, "admin"), U(membroFora, "Employee"));
+
+        // O administrador é o responsável; gerente, coordenador e supervisor geram a equipe.
+        db.Teams.AddRange(
+            new Team
+            {
+                Id = equipe, OrganizationId = Org, Name = "Vendas", ManagerId = admin,
+                Members =
+                {
+                    new TeamMember { UserId = gerente, IsManager = true },
+                    new TeamMember { UserId = coord, IsManager = true },
+                    new TeamMember { UserId = sup, IsManager = true },
+                    new TeamMember { UserId = membro }
+                }
+            },
+            new Team
+            {
+                Id = equipeFora, OrganizationId = Org, Name = "Suporte", ManagerId = admin,
+                Members = { new TeamMember { UserId = membroFora } }
+            });
+        db.SaveChanges();
+
+        async Task<AccessScope> ScopeOf(Guid id, string role) =>
+            await new AccessScopeService(db).GetScopeAsync(As(id, role));
+
+        var g = await ScopeOf(gerente, "Manager");
+        Assert.True(g.CanAccessUser(coord));
+        Assert.True(g.CanAccessUser(sup));
+        Assert.True(g.CanAccessUser(membro));
+        Assert.False(g.CanAccessUser(admin));
+        Assert.False(g.CanAccessUser(membroFora));
+        Assert.False(g.CanAccessTeam(equipeFora));
+
+        var c = await ScopeOf(coord, "Coordinator");
+        Assert.False(c.CanAccessUser(gerente));
+        Assert.True(c.CanAccessUser(sup));
+        Assert.True(c.CanAccessUser(membro));
+
+        var s = await ScopeOf(sup, "Supervisor");
+        Assert.False(s.CanAccessUser(gerente));
+        Assert.False(s.CanAccessUser(coord));
+        Assert.True(s.CanAccessUser(membro));
+    }
+
+    [Fact]
+    public async Task AtribuirEquipes_ViraAdministradorESaiDasDesmarcadas()
+    {
+        var db = CreateDb();
+        var gerente = Guid.NewGuid();
+        db.Users.Add(new User
+        {
+            Id = gerente, FirstName = "G", LastName = "T", Email = "g@x.com", PasswordHash = "x",
+            Role = "Manager", IsActive = true, OrganizationId = Org
+        });
+        db.SaveChanges();
+
+        var repo = new WiseMonitor.Api.Repositories.TeamRepository(db);
+
+        await repo.SetManagedTeamsAsync(gerente, new[] { TeamA, TeamC }, Org);
+        var scope = await new AccessScopeService(db).GetScopeAsync(As(gerente, "Manager"));
+        Assert.True(scope.CanAccessTeam(TeamA));
+        Assert.True(scope.CanAccessTeam(TeamC));
+        Assert.False(scope.CanAccessTeam(TeamB));
+        Assert.True(scope.CanAccessUser(Supervisor));   // responsável da Equipe A, abaixo do gerente
+        Assert.True(scope.CanAccessUser(MemberC));
+
+        await repo.SetManagedTeamsAsync(gerente, new[] { TeamA }, Org);
+        Assert.False(db.TeamMembers.Any(m => m.UserId == gerente && m.TeamId == TeamC));
+        Assert.True(db.TeamMembers.Any(m => m.UserId == gerente && m.TeamId == TeamA && m.IsManager));
+    }
+
     [Theory]
     [InlineData("admin")]
     [InlineData("TenantAdmin")]
-    [InlineData("Manager")]
-    public async Task OutrosPapeis_NaoSaoRestritos(string role)
+    [InlineData("SuperAdmin")]
+    public async Task Administradores_NaoSaoRestritos(string role)
     {
         var svc = new AccessScopeService(CreateDb());
 
@@ -292,7 +410,10 @@ public class AccessScopeServiceTests
     [Fact]
     public async Task AoVivo_ConexaoDoSupervisorRecebeSoMaquinasDoEscopo()
     {
-        var live = new LiveMonitoringService(Microsoft.Extensions.Logging.Abstractions.NullLogger<LiveMonitoringService>.Instance);
+        var live = new LiveMonitoringService(Microsoft.Extensions.Logging.Abstractions.NullLogger<LiveMonitoringService>.Instance)
+        {
+            BroadcastWindow = TimeSpan.FromMilliseconds(10)
+        };
         var org = Org.ToString();
         var adminWs = new FakeWebSocket();
         var supWs = new FakeWebSocket();
@@ -302,7 +423,7 @@ public class AccessScopeServiceTests
 
         live.RegisterOrUpdateDevice(new LiveDeviceUpdateDTO { DeviceId = "pc-a", OrgId = org, UserId = MemberA.ToString() });
         live.RegisterOrUpdateDevice(new LiveDeviceUpdateDTO { DeviceId = "pc-c", OrgId = org, UserId = MemberC.ToString() });
-        await Task.Delay(100); // broadcast é disparado sem await
+        await Task.Delay(300); // broadcast é agrupado (janela curta no teste) e disparado sem await
 
         Assert.Equal(new[] { "pc-a", "pc-c" }, LastUpdateDeviceIds(adminWs).OrderBy(x => x));
         Assert.Equal(new[] { "pc-a" }, LastUpdateDeviceIds(supWs));

@@ -20,6 +20,7 @@ namespace WiseMonitor.Api.Services
         private readonly IVideoSegmentRepository _repository;
         private readonly AppDbContext _context;
         private readonly ILiveMonitoringService _liveService;
+        private readonly IVideoStorageService _storage;
         private readonly TimeSpan _retentionWindow;
         private readonly byte[] _signingKey;
 
@@ -30,11 +31,13 @@ namespace WiseMonitor.Api.Services
             IVideoSegmentRepository repository,
             AppDbContext context,
             ILiveMonitoringService liveService,
+            IVideoStorageService storage,
             IConfiguration configuration)
         {
             _repository = repository;
             _context = context;
             _liveService = liveService;
+            _storage = storage;
 
             var retentionHours = configuration.GetValue<double?>("VideoSegmentRetentionHours") ?? 4;
             _retentionWindow = TimeSpan.FromHours(retentionHours);
@@ -93,7 +96,66 @@ namespace WiseMonitor.Api.Services
                 segment.EndedAt);
         }
 
+        public async Task<VideoSegmentUploadTicketDTO?> CreateUploadTicketAsync(Guid organizationId)
+        {
+            if (!_storage.IsEnabled)
+                return null;
+
+            var segmentId = Guid.NewGuid();
+            var objectName = _storage.BuildObjectName(organizationId, segmentId);
+
+            return new VideoSegmentUploadTicketDTO
+            {
+                SegmentId = segmentId,
+                UploadUrl = await _storage.CreateUploadUrlAsync(objectName),
+                ContentType = VideoStorageService.ContentType
+            };
+        }
+
+        public async Task<VideoSegmentDTO> ConfirmUploadAsync(Guid organizationId, VideoSegmentConfirmDTO dto, string baseUrl)
+        {
+            if (organizationId == Guid.Empty)
+                throw new ArgumentException("OrganizationId é obrigatório.");
+
+            if (dto.MonitoredUserId == Guid.Empty)
+                throw new ArgumentException("MonitoredUserId é obrigatório.");
+
+            if (string.IsNullOrWhiteSpace(dto.DeviceId))
+                throw new ArgumentException("DeviceId é obrigatório.");
+
+            var segment = new VideoSegment
+            {
+                // O mesmo id do ticket: o nome do objeto é recalculado a partir dele e da
+                // organização do token, nunca recebido do agent.
+                Id = dto.SegmentId,
+                OrganizationId = organizationId,
+                MonitoredUserId = dto.MonitoredUserId,
+                DeviceId = dto.DeviceId,
+                StartedAt = DateTime.SpecifyKind(dto.StartedAt, DateTimeKind.Utc),
+                EndedAt = DateTime.SpecifyKind(dto.EndedAt, DateTimeKind.Utc),
+                StorageKey = _storage.BuildObjectName(organizationId, dto.SegmentId),
+                ContentType = VideoStorageService.ContentType,
+                SizeInBytes = Math.Max(0, dto.SizeInBytes),
+                CreatedAt = DateTime.UtcNow
+            };
+
+            await _repository.UpsertAsync(segment, _retentionWindow);
+
+            await _liveService.NotifyNewSegmentAsync(
+                segment.DeviceId,
+                segment.OrganizationId.ToString(),
+                segment.Id,
+                segment.StartedAt,
+                segment.EndedAt);
+
+            return ToDTO(segment, baseUrl);
+        }
+
         public Task<VideoSegment?> GetByIdAsync(Guid id) => _repository.GetByIdAsync(id);
+
+        public Task<VideoSegment?> GetMetadataByIdAsync(Guid id) => _repository.GetMetadataByIdAsync(id);
+
+        public Task<string> CreateReadUrlAsync(string storageKey) => _storage.CreateReadUrlAsync(storageKey);
 
         public async Task<VideoSegmentDTO?> GetLatestAsync(string deviceId, string baseUrl)
         {
@@ -102,25 +164,28 @@ namespace WiseMonitor.Api.Services
         }
 
         public async Task<IEnumerable<VideoSegmentHistoryItemDTO>> GetHistoryWithContextAsync(
-            string deviceId, DateTime from, DateTime to, string baseUrl)
+            string deviceId, DateTime from, DateTime to, string baseUrl, Guid? userId = null)
         {
             from = DateTime.SpecifyKind(from, DateTimeKind.Utc);
             to = DateTime.SpecifyKind(to, DateTimeKind.Utc);
 
-            var segments = (await _repository.GetHistoryAsync(deviceId, from, to)).ToList();
+            var segments = (await _repository.GetHistoryAsync(deviceId, from, to))
+                // Máquina usada por mais de uma pessoa: só os segmentos do usuário escolhido.
+                .Where(s => userId == null || s.MonitoredUserId == userId)
+                .ToList();
             if (segments.Count == 0)
                 return Enumerable.Empty<VideoSegmentHistoryItemDTO>();
 
             // Todos os segmentos de um device pertencem ao mesmo MonitoredUserId/OrganizationId
             // na prática — usamos o primeiro para escopar as consultas de contexto.
             var orgId = segments[0].OrganizationId;
-            var userId = segments[0].MonitoredUserId;
+            var monitoredId = segments[0].MonitoredUserId;
 
             // Overlap real (não "mesmo dia"): registro começa antes do fim da janela E
             // (ainda não terminou OU termina depois do início da janela).
             var appFocusEvents = await _context.AppFocusEvents
                 .AsNoTracking()
-                .Where(a => a.OrganizationId == orgId && a.UserId == userId
+                .Where(a => a.OrganizationId == orgId && a.UserId == monitoredId
                          && a.StartTime < to
                          && (a.EndTime == null || a.EndTime > from))
                 .OrderBy(a => a.StartTime)
@@ -129,7 +194,7 @@ namespace WiseMonitor.Api.Services
             var keyboardSessions = await _context.KeyboardSessions
                 .AsNoTracking()
                 .Include(k => k.Words)
-                .Where(k => k.OrganizationId == orgId && k.UserId == userId
+                .Where(k => k.OrganizationId == orgId && k.UserId == monitoredId
                          && k.StartAt < to && k.EndAt > from)
                 .OrderBy(k => k.StartAt)
                 .ToListAsync();
@@ -176,9 +241,15 @@ namespace WiseMonitor.Api.Services
                         .ToList()
                 };
 
+                var dto = ToDTO(segment, baseUrl);
                 results.Add(new VideoSegmentHistoryItemDTO
                 {
-                    Segment = ToDTO(segment, baseUrl),
+                    Id = dto.Id,
+                    DeviceId = dto.DeviceId,
+                    MonitoredUserId = dto.MonitoredUserId,
+                    StartedAt = dto.StartedAt,
+                    EndedAt = dto.EndedAt,
+                    Url = dto.Url,
                     Context = context
                 });
             }
@@ -213,7 +284,11 @@ namespace WiseMonitor.Api.Services
                 for (var index = 0; index < segments.Count; index++)
                 {
                     var segmentPath = Path.Combine(temporaryDirectory, $"segment_{index:D5}.mp4");
-                    await File.WriteAllBytesAsync(segmentPath, segments[index].VideoData);
+                    var storageKey = segments[index].StorageKey;
+                    if (storageKey != null)
+                        await _storage.DownloadToFileAsync(storageKey, segmentPath);
+                    else
+                        await File.WriteAllBytesAsync(segmentPath, segments[index].VideoData);
                     segmentPaths.Add(segmentPath);
                 }
 

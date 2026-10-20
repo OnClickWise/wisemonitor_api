@@ -32,6 +32,11 @@ namespace WiseMonitor.Api.Controllers
         [HasPermission(Permissions.TeamsCreate)]
         public async Task<IActionResult> Create([FromBody] CreateTeamDTO dto)
         {
+            // Montar equipes define quem cada gestor enxerga: só administradores.
+            var scope = await _scopeService.GetScopeAsync(User);
+            if (scope.IsRestricted)
+                return Forbid();
+
             var organizationId = User.GetOrganizationId();
 
             await _teamService.CreateAsync(dto, organizationId);
@@ -96,9 +101,9 @@ namespace WiseMonitor.Api.Controllers
                 return Ok(new { message = "Team atualizada com sucesso" });
             }
 
-            // Supervisor: só nas próprias equipes, e só a jornada. Nome, membros e
-            // administradores ficam com a gestão — se pudesse incluir membros, ele
-            // ganharia acesso aos dados de quem quisesse da organização.
+            // Gerente, coordenador e supervisor: só nas próprias equipes, e só a
+            // jornada. Nome, membros e administradores ficam com os administradores —
+            // se pudesse incluir membros, o gestor ganharia acesso a quem quisesse.
             if (!scope.CanAccessTeam(id))
                 return NotFound("Team não encontrada");
 
@@ -121,6 +126,10 @@ namespace WiseMonitor.Api.Controllers
         [HasPermission(Permissions.TeamsDelete)]
         public async Task<IActionResult> Delete(Guid id)
         {
+            var scope = await _scopeService.GetScopeAsync(User);
+            if (scope.IsRestricted)
+                return Forbid();
+
             var organizationId = User.GetOrganizationId();
 
             await _teamService.DeleteAsync(id, organizationId);
@@ -162,6 +171,45 @@ namespace WiseMonitor.Api.Controllers
             await _teamService.RemoveMemberAsync(id, userId, organizationId);
 
             return Ok(new { message = "Membro removido da team" });
+        }
+
+        // ======================================================
+        // 📌 EQUIPES QUE UM GESTOR GERE
+        // ======================================================
+        [HttpGet("managed-by/{userId:guid}")]
+        public async Task<IActionResult> GetManagedTeams(Guid userId)
+        {
+            var scope = await _scopeService.GetScopeAsync(User);
+
+            // O próprio gestor pode consultar as dele; as dos outros, só administradores.
+            if (scope.IsRestricted && userId != scope.UserId)
+                return Forbid();
+
+            return Ok(await _teamService.GetManagedTeamsAsync(userId, User.GetOrganizationId()));
+        }
+
+        [HttpPut("managed-by/{userId:guid}")]
+        [HasPermission(Permissions.TeamsEdit)]
+        public async Task<IActionResult> SetManagedTeams(Guid userId, [FromBody] SetManagedTeamsDTO dto)
+        {
+            var scope = await _scopeService.GetScopeAsync(User);
+            if (scope.IsRestricted)
+                return Forbid();
+
+            try
+            {
+                var organizationId = User.GetOrganizationId();
+                await _teamService.SetManagedTeamsAsync(userId, dto.TeamIds ?? new(), organizationId);
+                return Ok(await _teamService.GetManagedTeamsAsync(userId, organizationId));
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
     }
 }

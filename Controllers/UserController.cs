@@ -163,6 +163,10 @@ namespace WiseMonitor.Api.Controllers
                 if (!string.IsNullOrWhiteSpace(dto.Role))
                     dto.Role = UserRoles.Normalize(dto.Role);
 
+                // Fora dos administradores: só usuários do próprio escopo.
+                if (!await _scopeService.CanAccessUserAsync(User, id))
+                    return NotFound();
+
                 var target = await _userService.GetUserByIdAsync(id, orgId);
                 if (target == null)
                     return NotFound();
@@ -311,12 +315,12 @@ namespace WiseMonitor.Api.Controllers
             var callerRole = User.FindFirst(ClaimTypes.Role)?.Value ?? string.Empty;
             var normalized = UserRoles.Normalize(callerRole);
 
-            // SuperAdmin e TenantAdmin veem todos os papéis de tenant
+            // SuperAdmin e TenantAdmin veem todos os papéis de tenant; os demais, só os abaixo deles.
             var roles = normalized == UserRoles.SuperAdmin
                 ? UserRoles.All
                 : UserRoles.TenantLevel;
 
-            return Ok(roles);
+            return Ok(roles.Where(r => UserRoles.CanAssign(callerRole, r)).ToArray());
         }
     }
 }

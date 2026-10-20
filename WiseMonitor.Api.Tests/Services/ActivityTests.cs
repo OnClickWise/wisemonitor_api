@@ -67,7 +67,7 @@ public class ActivityTests
     private static AppFocusController Controller(AppDbContext db, ClaimsPrincipal user)
     {
         var service = new AppFocusService(new AppFocusRepository(db), null!, null!, NullLogger<AppFocusService>.Instance);
-        return new AppFocusController(service, new AccessScopeService(db), NullLogger<AppFocusController>.Instance)
+        return new AppFocusController(service, null!, new AccessScopeService(db), NullLogger<AppFocusController>.Instance)
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = user } }
         };
@@ -89,7 +89,7 @@ public class ActivityTests
             Ev(Member, Day.AddDays(1).AddHours(1)));
         db.SaveChanges();
 
-        var result = Events(await Controller(db, As(Guid.NewGuid(), "admin")).GetAll(Day, null, null));
+        var result = Events(await Controller(db, As(Guid.NewGuid(), "admin")).GetAll(Day, null, null, null, null, null));
 
         Assert.Equal(2, result.Count);
     }
@@ -103,9 +103,9 @@ public class ActivityTests
 
         var sup = Controller(db, As(Supervisor, "Supervisor"));
 
-        Assert.Equal(new[] { Member }, Events(await sup.GetAll(Day, null, null)).Select(e => e.UserId));
-        Assert.IsType<ForbidResult>(await sup.GetAll(Day, null, Outsider));
-        Assert.Single(Events(await sup.GetAll(Day, null, Member)));
+        Assert.Equal(new[] { Member }, Events(await sup.GetAll(Day, null, null, null, null, null)).Select(e => e.UserId));
+        Assert.IsType<ForbidResult>(await sup.GetAll(Day, null, Outsider, null, null, null));
+        Assert.Single(Events(await sup.GetAll(Day, null, Member, null, null, null)));
     }
 
     [Fact]
@@ -118,7 +118,7 @@ public class ActivityTests
             Ev(Member, Day.AddHours(11), "excel"));
         db.SaveChanges();
 
-        var result = Events(await Controller(db, As(Guid.NewGuid(), "admin")).GetAll(Day, null, null));
+        var result = Events(await Controller(db, As(Guid.NewGuid(), "admin")).GetAll(Day, null, null, null, null, null));
 
         Assert.Equal(1, result.Count(e => e.ProcessName == "chrome" && e.IconBase64 != null));
         Assert.Equal(1, result.Count(e => e.ProcessName == "excel" && e.IconBase64 != null));
@@ -163,14 +163,67 @@ public class ActivityTests
         Assert.Equal(1024 * 1024, comBytes.VideoData.Length);
 
         var live = new LiveMonitoringService(NullLogger<LiveMonitoringService>.Instance);
-        var service = new VideoSegmentService(repo, db, live, config);
+        var service = new VideoSegmentService(repo, db, live, new FakeStorage(enabled: false), config);
 
         var item = (await service.GetHistoryWithContextAsync(device, Day.AddHours(8), Day.AddHours(10), "https://api")).Single();
 
-        Assert.Contains("/api/video-segments/", item.Segment.Url);
+        Assert.Contains("/api/video-segments/", item.Url);
         Assert.Single(item.Context.AppFocusEvents);
         var sessao = Assert.Single(item.Context.KeyboardSessions);
         Assert.Equal(42, sessao.TotalKeystrokes);
         Assert.Empty(sessao.TopWords);
+    }
+
+    // ─── Vídeo no Cloud Storage ─────────────────────────────────
+
+    private static VideoSegmentService VideoService(AppDbContext db, IVideoStorageService storage)
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["Jwt:SecretKey"] = new string('k', 64) })
+            .Build();
+        return new VideoSegmentService(new VideoSegmentRepository(db), db,
+            new LiveMonitoringService(NullLogger<LiveMonitoringService>.Instance), storage, config);
+    }
+
+    [Fact]
+    public async Task VideoNoBucket_DesligadoNaoEmiteUrlDeUpload()
+    {
+        var service = VideoService(CreateDb(), new FakeStorage(enabled: false));
+
+        Assert.Null(await service.CreateUploadTicketAsync(Org));
+    }
+
+    [Fact]
+    public async Task VideoNoBucket_ConfirmacaoGravaSoMetadadosComChaveDaOrganizacaoDoToken()
+    {
+        var db = CreateDb();
+        var service = VideoService(db, new FakeStorage(enabled: true));
+
+        var ticket = await service.CreateUploadTicketAsync(Org);
+        Assert.NotNull(ticket);
+        Assert.Contains("PUT", ticket!.UploadUrl);
+
+        await service.ConfirmUploadAsync(Org, new VideoSegmentConfirmDTO
+        {
+            SegmentId = ticket.SegmentId, DeviceId = "pc-1", MonitoredUserId = Member,
+            StartedAt = Day.AddHours(9), EndedAt = Day.AddHours(9).AddSeconds(10), SizeInBytes = 90_000
+        }, "https://api");
+
+        var salvo = Assert.Single(db.VideoSegments);
+        Assert.Equal(ticket.SegmentId, salvo.Id);
+        Assert.Empty(salvo.VideoData);
+        Assert.Equal($"videos/{Org:N}/{ticket.SegmentId:N}.mp4", salvo.StorageKey);
+
+        var meta = await service.GetMetadataByIdAsync(salvo.Id);
+        Assert.Equal(salvo.StorageKey, meta!.StorageKey);
+    }
+
+    private sealed class FakeStorage(bool enabled) : IVideoStorageService
+    {
+        public bool IsEnabled => enabled;
+        public string BuildObjectName(Guid organizationId, Guid segmentId) => $"videos/{organizationId:N}/{segmentId:N}.mp4";
+        public Task<string> CreateUploadUrlAsync(string objectName) => Task.FromResult($"https://storage/PUT/{objectName}");
+        public Task<string> CreateReadUrlAsync(string objectName) => Task.FromResult($"https://storage/GET/{objectName}");
+        public Task DownloadToFileAsync(string objectName, string path) => Task.CompletedTask;
     }
 }

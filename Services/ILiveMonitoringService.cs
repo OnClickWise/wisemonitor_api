@@ -26,7 +26,8 @@ namespace WiseMonitor.Api.Services
         IReadOnlyCollection<MonitoringMessageDto> GetAllLiveDevicesForSession(string orgId, string sessionId);
 
         // --- Controle de "quem está assistindo" cada device (bookkeeping usado pelo dashboard) ---
-        void AddWatcher(string deviceId, string sessionId);
+        // maxFps: teto de frames por segundo para esse espectador (0 = sem limite).
+        void AddWatcher(string deviceId, string sessionId, int maxFps = 0);
         void RemoveWatcher(string deviceId, string sessionId);
         void RemoveWatcherFromAllDevices(string sessionId);
 
@@ -38,6 +39,8 @@ namespace WiseMonitor.Api.Services
         event Action<string, bool>? WatchStateChanged;
 
         bool IsWatched(string deviceId);
+        /// <summary>Espectadores do device com o limite de fps que cada um pediu (0 = sem limite).</summary>
+        IReadOnlyList<(WebSocket Socket, int MaxFps)> GetWatchers(string deviceId);
 
         /// <summary>
         /// Sockets dos admins que estão assistindo este device agora — usado por

@@ -8,6 +8,9 @@ namespace WiseMonitor.Api.Repositories
     public interface IVideoSegmentRepository
     {
         Task<VideoSegment?> GetByIdAsync(Guid id);
+
+        // Sem VideoData — para decidir se o vídeo está no bucket antes de ler os bytes.
+        Task<VideoSegment?> GetMetadataByIdAsync(Guid id);
         Task<VideoSegment?> GetLatestAsync(string deviceId);
         // Sem VideoData — para listar e montar URLs.
         Task<IEnumerable<VideoSegment>> GetHistoryAsync(string deviceId, DateTime from, DateTime to);

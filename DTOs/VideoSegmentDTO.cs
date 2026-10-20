@@ -40,10 +40,12 @@ namespace WiseMonitor.Api.DTOs
         public List<string> TopWords { get; set; } = new();
     }
 
-    /// <summary>Um item de histórico: metadados do segmento + o contexto que ocorreu durante ele.</summary>
-    public class VideoSegmentHistoryItemDTO
+    /// <summary>
+    /// Um item de histórico: metadados do segmento + o contexto que ocorreu durante ele.
+    /// Plano (id, url... no mesmo nível do context), que é o formato que o painel lê.
+    /// </summary>
+    public class VideoSegmentHistoryItemDTO : VideoSegmentDTO
     {
-        public VideoSegmentDTO Segment { get; set; } = new();
         public VideoSegmentContextDTO Context { get; set; } = new();
     }
 }
